@@ -15,7 +15,10 @@ public actor ResidualScanner {
         // Helper to safely add an item
         func addItem(url: URL, category: ResidualCategory, isSelected: Bool = true, isProtected: Bool = false) {
             // An Apple app's own bundle holds no user data, so it may be pre-selected; its data may not.
-            let preselect = isSelected && !isProtected && (!isAppleApp || category == .appBundle)
+            // System-wide (/Library) items are never pre-selected: their match rests on names from an
+            // untrusted Info.plist, and moving them needs root.
+            let isSystemWide = !url.path.hasPrefix(PathUtils.homeDirectory.path + "/") && category != .appBundle
+            let preselect = isSelected && !isProtected && !isSystemWide && (!isAppleApp || category == .appBundle)
             let standardized = url.standardizedFileURL
             guard !visitedURLs.contains(standardized) else { return }
             guard fileManager.fileExists(atPath: standardized.path) else { return }
@@ -47,7 +50,9 @@ public actor ResidualScanner {
             let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             return PathUtils.isSafePathComponent(trimmed) ? trimmed : ""
         }
-        let bundleId = component(app.bundleIdentifier)
+        // A bundle id is only trusted for prefix matching if it looks like a real reverse-DNS id;
+        // a bare "com" would otherwise match every vendor's com.* files.
+        let bundleId = Self.isTrustworthyBundleId(component(app.bundleIdentifier)) ? component(app.bundleIdentifier) : ""
         let appName = component(app.name)
         let executable: String? = component(app.executableName)
 
@@ -191,7 +196,10 @@ public actor ResidualScanner {
                 guard Self.launchdJobBelongs(plist: plist, filename: plistURL.lastPathComponent,
                                              bundleId: bundleId, appPath: app.url.path) else { continue }
                 addItem(url: plistURL, category: .launchAgents)
-                if let program = Self.launchdProgram(plist), program.hasPrefix("/Library/PrivilegedHelperTools/") {
+                // Only root-owned job definitions may point us at a privileged helper; a user-writable
+                // ~/Library/LaunchAgents plist could otherwise name any vendor's root helper.
+                if dir != userLaunchAgents, Self.isRootOwned(plistURL),
+                   let program = Self.launchdProgram(plist), program.hasPrefix("/Library/PrivilegedHelperTools/") {
                     addItem(url: URL(fileURLWithPath: program), category: .launchAgents)
                 }
             }
@@ -218,6 +226,17 @@ public actor ResidualScanner {
         let name = "." + filename.lowercased() + "."
         let id = bundleId.lowercased()
         return !id.isEmpty && name.contains("." + id + ".")
+    }
+
+    /// At least two non-empty dot-separated parts with a reasonably long overall id ("com.vendor", "md.obsidian").
+    static func isTrustworthyBundleId(_ id: String) -> Bool {
+        let parts = id.split(separator: ".", omittingEmptySubsequences: false)
+        return parts.count >= 2 && !parts.contains(where: \.isEmpty) && id.count >= 6
+    }
+
+    static func isRootOwned(_ url: URL) -> Bool {
+        var st = stat()
+        return lstat(url.path, &st) == 0 && st.st_uid == 0
     }
 
     static func launchdProgram(_ plist: [String: Any]) -> String? {

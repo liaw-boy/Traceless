@@ -1,7 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import AppKit
-import AppSweepCore
+import UprootCore
 
 public struct DragDropView: View {
     @ObservedObject var state: AppState
@@ -16,7 +16,7 @@ public struct DragDropView: View {
             Text("把應用程式拖到這裡")
                 .font(.title2.weight(.semibold))
 
-            Text("AppSweep 會找出它的偏好設定、快取、容器與背景項目，讓你一次移除乾淨。")
+            Text("Uproot 會找出它的偏好設定、快取、容器與背景項目，讓你一次移除乾淨。")
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 380)

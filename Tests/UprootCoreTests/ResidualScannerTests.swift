@@ -1,5 +1,5 @@
 import XCTest
-@testable import AppSweepCore
+@testable import UprootCore
 
 final class ResidualScannerTests: XCTestCase {
     func testFileSizeFormatter() {

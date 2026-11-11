@@ -2,28 +2,28 @@
 import PackageDescription
 
 let package = Package(
-    name: "AppSweep",
+    name: "Uproot",
     platforms: [
         .macOS(.v14)
     ],
     products: [
-        .executable(name: "AppSweep", targets: ["AppSweep"]),
-        .library(name: "AppSweepCore", targets: ["AppSweepCore"])
+        .executable(name: "Uproot", targets: ["Uproot"]),
+        .library(name: "UprootCore", targets: ["UprootCore"])
     ],
     targets: [
         .target(
-            name: "AppSweepCore",
-            path: "Sources/AppSweepCore"
+            name: "UprootCore",
+            path: "Sources/UprootCore"
         ),
         .executableTarget(
-            name: "AppSweep",
-            dependencies: ["AppSweepCore"],
-            path: "Sources/AppSweep"
+            name: "Uproot",
+            dependencies: ["UprootCore"],
+            path: "Sources/Uproot"
         ),
         .testTarget(
-            name: "AppSweepCoreTests",
-            dependencies: ["AppSweepCore"],
-            path: "Tests/AppSweepCoreTests"
+            name: "UprootCoreTests",
+            dependencies: ["UprootCore"],
+            path: "Tests/UprootCoreTests"
         )
     ]
 )

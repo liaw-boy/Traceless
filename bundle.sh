@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Build a release .app bundle: ./bundle.sh  →  AppSweep.app & AppSweep.dmg
+# Build a release .app bundle: ./bundle.sh  →  Uproot.app & Uproot.dmg
 set -e
 cd "$(dirname "$0")"
 
@@ -9,9 +9,9 @@ BUILD=$(git rev-list --count HEAD 2>/dev/null || echo 1)
 echo "🔨 Building release binary (v$VERSION, build $BUILD)..."
 swift build -c release
 
-APP=AppSweep.app
+APP=Uproot.app
 rm -rf "$APP" && mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp .build/release/AppSweep "$APP/Contents/MacOS/AppSweep"
+cp .build/release/Uproot "$APP/Contents/MacOS/Uproot"
 
 # Generate native macOS AppIcon.icns
 echo "🎨 Compiling AppIcon.icns and brand assets..."
@@ -25,10 +25,10 @@ cat > "$APP/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>CFBundleName</key><string>AppSweep</string>
-  <key>CFBundleDisplayName</key><string>AppSweep</string>
-  <key>CFBundleIdentifier</key><string>com.appsweep.macos</string>
-  <key>CFBundleExecutable</key><string>AppSweep</string>
+  <key>CFBundleName</key><string>Uproot</string>
+  <key>CFBundleDisplayName</key><string>Uproot</string>
+  <key>CFBundleIdentifier</key><string>app.uproot.mac</string>
+  <key>CFBundleExecutable</key><string>Uproot</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundleIconName</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
@@ -42,17 +42,20 @@ cat > "$APP/Contents/Info.plist" <<EOF
 </dict></plist>
 EOF
 
-echo "🔏 Ad-hoc code signing AppSweep.app..."
-codesign --force --deep --sign - "$APP"
+# SIGN_IDENTITY="Your Code Signing Cert" ./bundle.sh keeps a stable signature, so macOS privacy
+# grants (Full Disk Access) survive rebuilds. Default is ad-hoc ("-").
+SIGN_IDENTITY="${SIGN_IDENTITY:--}"
+echo "🔏 Code signing Uproot.app (identity: $SIGN_IDENTITY)..."
+codesign --force --deep --options runtime --sign "$SIGN_IDENTITY" "$APP"
 
 # Package DMG (for drag-to-Applications installer)
-echo "📦 Packaging AppSweep.dmg..."
+echo "📦 Packaging Uproot.dmg..."
 DMG_STAGE=$(mktemp -d)/dmg_stage
 mkdir -p "$DMG_STAGE"
 cp -R "$APP" "$DMG_STAGE/"
 ln -s /Applications "$DMG_STAGE/Applications"
-rm -f AppSweep.dmg
-hdiutil create -volname "AppSweep" -srcfolder "$DMG_STAGE" -ov -format UDZO AppSweep.dmg >/dev/null
+rm -f Uproot.dmg
+hdiutil create -volname "Uproot" -srcfolder "$DMG_STAGE" -ov -format UDZO Uproot.dmg >/dev/null
 rm -rf "$(dirname "$DMG_STAGE")"
 
-echo "✅ Successfully built $APP and AppSweep.dmg!"
+echo "✅ Successfully built $APP and Uproot.dmg!"

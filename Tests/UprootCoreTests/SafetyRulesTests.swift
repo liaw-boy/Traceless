@@ -1,11 +1,11 @@
 import XCTest
-@testable import AppSweepCore
+@testable import UprootCore
 
 final class SafetyRulesTests: XCTestCase {
     private var tempDir: URL!
 
     override func setUpWithError() throws {
-        tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("AppSweepTests-\(UUID().uuidString)")
+        tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("UprootTests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
     }
 
@@ -19,7 +19,7 @@ final class SafetyRulesTests: XCTestCase {
     /// literally and never interpreted by the shell.
     func testPrivilegedScriptDoesNotInterpretHostileNames() throws {
         // File names cannot contain "/", so the payload reaches the canary through $TMPDIR.
-        let canaryName = "appsweep-canary-\(UUID().uuidString)"
+        let canaryName = "uproot-canary-\(UUID().uuidString)"
         let canary = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(canaryName)
         defer { try? FileManager.default.removeItem(at: canary) }
         let names = [
@@ -168,5 +168,36 @@ final class PathSafetyTests: XCTestCase {
         XCTAssertTrue(ResidualScanner.launchdJobBelongs(plist: ["ProgramArguments": [appPath + "/Contents/MacOS/agent"]], filename: "com.vendor.daemon.plist", bundleId: "", appPath: appPath))
         XCTAssertFalse(ResidualScanner.launchdJobBelongs(plist: ["Label": "com.example.application"], filename: "com.example.application.plist", bundleId: "com.example.app", appPath: appPath))
         XCTAssertFalse(ResidualScanner.launchdJobBelongs(plist: ["Program": "/Applications/Example.app.bak/x"], filename: "y.plist", bundleId: "", appPath: appPath))
+    }
+}
+
+final class AuditFixTests: XCTestCase {
+    func testBundleIdTrust() {
+        XCTAssertTrue(ResidualScanner.isTrustworthyBundleId("com.example.app"))
+        XCTAssertTrue(ResidualScanner.isTrustworthyBundleId("md.obsidian"))
+        for bad in ["", "com", "com.", ".com", "a.b", "com..x"] {
+            XCTAssertFalse(ResidualScanner.isTrustworthyBundleId(bad), bad)
+        }
+    }
+
+    func testNestedOrDeepAppBundlesRejected() {
+        XCTAssertTrue(PathUtils.isSafeToDelete(url: URL(fileURLWithPath: "/Applications/Vendor/Example.app")))
+        XCTAssertFalse(PathUtils.isSafeToDelete(url: URL(fileURLWithPath: "/Applications/Example.app/Contents/Helper.app")))
+        XCTAssertFalse(PathUtils.isSafeToDelete(url: URL(fileURLWithPath: "/Applications/A/B/Example.app")))
+        XCTAssertFalse(PathUtils.isSafeToDelete(url: URL(fileURLWithPath: "/Applications/Vendor/notes.txt")))
+    }
+
+    func testAdminFallbackRequiresRootOwnedAncestors() throws {
+        // /Library and / are root-owned and not world-writable on every Mac.
+        XCTAssertTrue(Uninstaller.hasRootOnlyAncestors(URL(fileURLWithPath: "/Library/LaunchDaemons/x.plist")))
+        // A user-owned temp folder could be swapped for a symlink, so root must not act inside it.
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("UprootAnc-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        XCTAssertFalse(Uninstaller.hasRootOnlyAncestors(tmp.appendingPathComponent("x")))
+        XCTAssertTrue(Uninstaller.isRealUserDirectory(tmp))
+        let link = tmp.appendingPathComponent("link")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: tmp)
+        XCTAssertFalse(Uninstaller.isRealUserDirectory(link))
     }
 }

@@ -1,9 +1,9 @@
 import SwiftUI
 import AppKit
-import AppSweepCore
+import UprootCore
 
 public struct MainView: View {
-    @StateObject private var state = AppState()
+    @ObservedObject var state: AppState
 
     private var searchText: Binding<String> {
         state.activeTab == .leftovers ? $state.leftoverSearchText : $state.searchText
@@ -30,14 +30,6 @@ public struct MainView: View {
                 .help("重新掃描（⌘R）")
                 .keyboardShortcut("r", modifiers: .command)
                 .disabled(state.isLoadingApps || state.isLoadingLeftovers)
-            }
-        }
-        .background {
-            // ⌘1…⌘3 switch sections, like Finder/Mail sidebars.
-            ForEach(Array(NavigationTab.allCases.enumerated()), id: \.element) { index, tab in
-                Button("") { state.activeTab = tab }
-                    .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
-                    .hidden()
             }
         }
         .sheet(isPresented: $state.showPermissionSheet) {

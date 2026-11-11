@@ -2,17 +2,21 @@ import AppKit
 import CoreGraphics
 import Foundation
 
-// Flat AppSweep icon: a solid blue squircle with a white app tile being swept to the right,
-// three motion strokes trailing behind it. Two colors, no gradients or glows.
-// Usage: swift scripts/generate_icon.swift <output.iconset>
+// Uproot icon: an app tile lifted up and out of the U-shaped slot it sat in — the app leaves cleanly,
+// and the U doubles as the initial.
+// Geometric, single-colour foreground so it also reads when macOS swaps the background
+// (dark / tinted icon modes on macOS 26). No gradients, no glow.
+// Usage: swift scripts/generate_icon.swift <output.iconset> [--dark]
 
-let iconsetPath = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "Resources/AppIcon.iconset"
+let args = CommandLine.arguments
+let iconsetPath = args.count > 1 ? args[1] : "Resources/AppIcon.iconset"
+let darkPreview = args.contains("--dark")
 let fm = FileManager.default
 try? fm.removeItem(atPath: iconsetPath)
 try fm.createDirectory(atPath: iconsetPath, withIntermediateDirectories: true)
 
-let background = CGColor(red: 0.16, green: 0.42, blue: 0.93, alpha: 1)   // #296BED
-let foreground = CGColor(red: 1, green: 1, blue: 1, alpha: 1)
+let background = darkPreview ? CGColor(gray: 0.12, alpha: 1) : CGColor(red: 0.11, green: 0.50, blue: 0.40, alpha: 1)  // #1C8066
+let ink = CGColor(red: 1, green: 1, blue: 1, alpha: 1)
 
 func renderIcon(pixelSize: Int) -> Data? {
     let s = CGFloat(pixelSize)
@@ -22,11 +26,10 @@ func renderIcon(pixelSize: Int) -> Data? {
         colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
     ), let ctx = NSGraphicsContext(bitmapImageRep: rep)?.cgContext else { return nil }
 
-    // macOS grid: 824/1024 body with ~22.5% corner radius, small soft shadow like system icons.
+    // macOS icon grid: 824/1024 body, ~22.5% corner radius, soft system-style shadow.
     let inset = s * 100 / 1024
     let body = CGRect(x: inset, y: inset, width: s - inset * 2, height: s - inset * 2)
     let squircle = CGPath(roundedRect: body, cornerWidth: body.width * 0.225, cornerHeight: body.width * 0.225, transform: nil)
-
     ctx.saveGState()
     ctx.setShadow(offset: CGSize(width: 0, height: -s * 0.01), blur: s * 0.025, color: CGColor(gray: 0, alpha: 0.28))
     ctx.addPath(squircle)
@@ -34,28 +37,45 @@ func renderIcon(pixelSize: Int) -> Data? {
     ctx.fillPath()
     ctx.restoreGState()
 
-    // White app tile with its motion strokes; the whole group is centered in the body.
-    let tile = body.width * 0.36
-    let gap = tile * 0.16
-    let longest = body.width * 0.30
-    let groupLeft = body.midX - (longest + gap + tile) / 2
-    let tileRect = CGRect(x: groupLeft + longest + gap, y: body.midY - tile / 2, width: tile, height: tile)
-    ctx.addPath(CGPath(roundedRect: tileRect, cornerWidth: tile * 0.24, cornerHeight: tile * 0.24, transform: nil))
-    ctx.setFillColor(foreground)
-    ctx.fillPath()
+    let w = body.width
+    let tile = w * 0.40
+    let corner = tile * 0.24
+    let lift = tile * 0.58
+    // Slot + tile lifted straight up out of it, centred as a group.
+    let groupHeight = tile + lift
+    let slotRect = CGRect(x: body.midX - tile / 2, y: body.midY - groupHeight / 2, width: tile, height: tile)
+    let tileRect = slotRect.offsetBy(dx: 0, dy: lift)
 
-    // Motion strokes trailing to the left, decreasing in length.
-    ctx.setStrokeColor(foreground)
+    // "U": the lower part of the slot the app used to occupy (and Uproot's initial).
+    let stroke = w * (pixelSize <= 64 ? 0.05 : 0.032)
+    let slot = slotRect.insetBy(dx: stroke / 2, dy: stroke / 2)
+    let topY = tileRect.minY + tile * 0.12              // rises behind the tile, which sits in front
+    let r = corner - stroke / 2
+    let u = CGMutablePath()
+    u.move(to: CGPoint(x: slot.minX, y: topY))
+    u.addLine(to: CGPoint(x: slot.minX, y: slot.minY + r))
+    u.addArc(center: CGPoint(x: slot.minX + r, y: slot.minY + r), radius: r, startAngle: .pi, endAngle: 1.5 * .pi, clockwise: false)
+    u.addLine(to: CGPoint(x: slot.maxX - r, y: slot.minY))
+    u.addArc(center: CGPoint(x: slot.maxX - r, y: slot.minY + r), radius: r, startAngle: 1.5 * .pi, endAngle: 2 * .pi, clockwise: false)
+    u.addLine(to: CGPoint(x: slot.maxX, y: topY))
+    ctx.saveGState()
+    ctx.setStrokeColor(ink)
+    ctx.setLineWidth(stroke)
     ctx.setLineCap(.round)
-    ctx.setLineWidth(body.width * 0.055)
-    let right = tileRect.minX - gap
-    let lengths: [CGFloat] = [0.20, 0.30, 0.20]
-    let ys: [CGFloat] = [tileRect.minY + tile * 0.2, tileRect.midY, tileRect.maxY - tile * 0.2]
-    for (len, y) in zip(lengths, ys) {
-        ctx.move(to: CGPoint(x: right - body.width * len, y: y))
-        ctx.addLine(to: CGPoint(x: right, y: y))
-    }
+    ctx.setLineJoin(.round)
+    ctx.addPath(u)
     ctx.strokePath()
+    ctx.restoreGState()
+
+    // Lifted tile, ringed in the background colour so the U visibly passes behind it.
+    let tilePath = CGPath(roundedRect: tileRect, cornerWidth: corner, cornerHeight: corner, transform: nil)
+    ctx.addPath(tilePath)
+    ctx.setStrokeColor(background)
+    ctx.setLineWidth(stroke * 2.6)
+    ctx.strokePath()
+    ctx.addPath(tilePath)
+    ctx.setFillColor(ink)
+    ctx.fillPath()
 
     return rep.representation(using: .png, properties: [:])
 }

@@ -1,6 +1,6 @@
 import SwiftUI
 import AppKit
-import AppSweepCore
+import UprootCore
 
 public struct AppListView: View {
     @ObservedObject var state: AppState

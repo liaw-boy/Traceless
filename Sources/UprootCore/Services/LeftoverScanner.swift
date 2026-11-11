@@ -88,6 +88,19 @@ public actor LeftoverScanner {
         "com.apple", "Biome", "HomeKit", "CoreData", "Spotlight", "Suggestions"
     ]
 
+    static let recentUseInterval: TimeInterval = 30 * 86400
+
+    static let genericNames: Set<String> = [
+        "cache", "caches", "data", "logs", "log", "temp", "tmp", "backup", "backups", "config",
+        "settings", "preferences", "support", "storage", "database", "crashreporter", "crashpad",
+        "plugins", "extensions", "updates", "updater", "downloads", "default", "shared", "common",
+        "helper", "agent", "service", "services", "launcher", "installer", "resources", "user",
+        // Chromium/Electron internals that live inside an app's own folder.
+        "codecache", "gpucache", "dawncache", "dawngraphitecache", "dawnwebgpucache", "grshadercache",
+        "shadercache", "webstorage", "localstorage", "sessionstorage", "blobstorage", "indexeddb",
+        "serviceworker", "cachedprofilesdata", "cacheddata", "shareddictionary", "networkpersistentstate"
+    ]
+
     static let sensitiveKeywords = ["1password", "bitwarden", "lastpass", "dashlane", "keepass", "enpass",
                                     "keychain", "gnupg", "gpg", "ssh", "yubico", "authy", "wallet"]
 
@@ -209,10 +222,13 @@ public actor LeftoverScanner {
 
                 // If it is a vendor directory, inspect child directories
                 if knownVendorDirectories.contains(nameLower) {
+                    // Some "vendor" folders are really one app's own data (Electron apps): if that app
+                    // is installed, leave the whole folder alone.
+                    let vendorToken = sanitizeToken(nameLower)
+                    if normalizedInstalledNames.contains(vendorToken) || installedNames.contains(nameLower) { continue }
                     if let subItems = try? fileManager.contentsOfDirectory(at: url, includingPropertiesForKeys: nil) {
                         for subURL in subItems {
                             let subName = subURL.lastPathComponent
-                            let compositeKey = "\(name)/\(subName)"
                             if isOrphan(
                                 candidate: subName,
                                 candidateURL: subURL,
@@ -220,7 +236,7 @@ public actor LeftoverScanner {
                                 installedNames: installedNames,
                                 normalizedNames: normalizedInstalledNames
                             ) {
-                                registerOrphan(groupKey: compositeKey, displayName: "\(name) \(subName)", url: subURL, category: .applicationSupport)
+                                registerOrphan(groupKey: "\(name)/\(subName)", displayName: "\(subName)（\(name)）", url: subURL, category: .applicationSupport)
                             }
                         }
                     }
@@ -318,6 +334,17 @@ public actor LeftoverScanner {
 
         // 1. Apple and macOS system identifiers
         if lower.starts(with: "com.apple.") || lowercasedSystemIdentifiers.contains(lower) {
+            return false
+        }
+
+        // Generic or very short folder names cannot be attributed to a specific app.
+        if token.count < 4 || Self.genericNames.contains(token) {
+            return false
+        }
+
+        // Something touched it recently, so an app (or tool) is probably still using it.
+        if let modified = (try? candidateURL.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
+           Date().timeIntervalSince(modified) < Self.recentUseInterval {
             return false
         }
 

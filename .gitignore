@@ -4,9 +4,10 @@
 *.xcodeproj/
 xcuserdata/
 # Build outputs (regenerate with ./bundle.sh)
-AppSweep.app/
+Uproot.app/
 *.dmg
 Resources/AppIcon.iconset/
 Resources/AppIcon.icns
 .env
 *.p12
+AppSweep.app/

@@ -1,69 +1,44 @@
-# AppSweep 🧹 (macOS 應用程式深度清理與移除工具)
+# Uproot
 
-一個專為 macOS 打造、深度借鑑業界頂級工具（**CleanMyMac** 與開源標竿 **Pearcleaner**）的專業級、原生、自訂設計系統應用程式移除軟體。
+把 macOS 應用程式連根移除：除了 `.app` 本體，也一併找出它留在系統裡的偏好設定、快取、容器、背景項目等檔案。所有東西都移到垃圾桶，清空前都能從 Finder 還原。
 
-![macOS 14+](https://img.shields.io/badge/macOS-14.0%2B-blue.svg)
-![Swift 6](https://img.shields.io/badge/Swift-6.0-orange.svg)
-![Custom Design System](https://img.shields.io/badge/UI-Custom%20Pro%20Studio-purple.svg)
+需求：macOS 14 以上。
 
----
+## 功能
 
-## 🎨 全新自訂設計系統 (Bespoke Pro Studio UI)
+- **應用程式**：列出 `/Applications`、`~/Applications` 與系統 App，可依「第三方／長期未開／系統」篩選，依大小、上次開啟、安裝時間、名稱排序。
+- **相關檔案**：依 bundle ID 與名稱比對 `~/Library` 與 `/Library` 下的偏好設定、Application Support、Caches、Containers、Group Containers、Application Scripts、Saved State、WebKit / Cookies、Logs、LaunchAgents / LaunchDaemons、PrivilegedHelperTools。launchd 項目依擁有權判定（Label、AssociatedBundleIdentifiers、Program 路徑）。
+- **重置**：保留 App 本體，只清除它的資料，讓它回到剛安裝的狀態。
+- **殘留檔案**：找出已刪除 App 留下的資料夾。預設全部不勾選，需自行確認。
+- **拖曳移除**：把任何 `.app` 拖進視窗即可分析。
 
-告別 macOS 預設的灰色原生元件，AppSweep 全面採用客製化的 **Studio Pro Dark** 視覺體系：
-- 🎯 **統一官方應用圖示 (Dock & In-App)**：Dock 圖示與軟體內頂部品牌圖示 100% 統一，採用深色鈦金屬回收艙與霓虹渦流清理立方體設計，象徵極致乾淨移除。
-- 💊 **自訂滑動膠囊過濾器 (Sliding Capsule Filter)**：提供 `全部`、`第三方`、`長期未開`、`系統` 四種維度切換，點選具備流體幾何動畫與發光背景。
-- 🔀 **多維度即時排序器 (Multi-Dimension Sorter)**：
-  - 📦 **容量大小**（由大到小 / 由小到大）
-  - 🕒 **上次開啟時間**（即時掌握閒置未使用的 App）
-  - 📅 **安裝與修改時間**（由新到舊 / 由舊到新）
-  - 🔤 **名稱**（A → Z）
-- 📊 **視覺化儲存佔用色條 (Storage Breakdown Visualizer)**：
-  - 如同 CleanMyMac 與 DaisyDisk，以彩色分段色條即時呈現主程式（藍）、快取（青）、支援資料（紫）、沙盒容器（靛）、偏好設定（橘）等佔用比例。
-- ☑️ **自訂發光勾選方塊 (Custom Checkbox System)**：
-  - 微光圓角勾選框，支援單檔點選、整列卡片點擊切換、以及分類標題一鍵全選 / 取消。
-- 🎴 **發光焦點卡片 (Interactive App Cards)**：
-  - 醒目的左側電光藍發光邊條，搭配晶透 Retina 高解析圖示與陰影。
-  - 標示處理器架構標籤（`Apple Silicon` / `Intel` / `Universal`）與相對使用時間（例如 `2 天前開啟`、`超過 3 個月未使用`、`從未開啟`）。
+## 安全設計
 
----
+- 每個刪除路徑都要先通過 `PathUtils.isSafeToDelete`：拒絕 `..`、控制字元、大小寫別名與指向受保護位置的 symlink 上層；個人資料夾、憑證、Apple 資料庫一律不碰；只允許已知的殘留位置與 Applications 資料夾內的 `.app`。
+- 系統 App 不能移除；Apple App 的資料（如備忘錄、郵件）不會預先勾選。
+- 系統資料夾內的檔案需要管理者權限時，整批只詢問一次密碼，路徑以 AppleScript `quoted form of` 傳遞，不會被 shell 解譯。
+- 沙盒容器需要「完全取用磁碟」權限；App 會在需要時引導開啟。
 
-## 🚀 獨家高階功能（借鑑 Pearcleaner & CleanMyMac）
+## 建置
 
-1. **🔄 應用程式重置 (Reset Application)**：
-   - 當軟體出現異常或佔用龐大快取時，無須刪除 App 本體，可透過「重置此應用」一鍵清除其偏好設定、暫存與沙盒資料，回歸出廠狀態。
-2. **💤 長期未使用過濾 (Unused Apps > 3 個月)**：
-   - 透過 macOS 系統底層中繼資料精確偵測最後啟動時間，一鍵找出被遺忘在角落但佔據數十 GB 的肥大應用程式。
-3. **⚙️ CPU 架構識別 (Architecture Detection)**：
-   - 高速解析 Mach-O 執行檔標頭，即時辨識為原生 `Apple Silicon (arm64)`、Rosetta 轉譯的 `Intel (x86_64)` 或 `Universal (通用架構)`。
-4. **⚡️ Spotlight 毫秒級極速中繼提取**：
-   - 擺脫傳統遍歷成千上萬檔案的轉圈延遲，百款應用程式容量與狀態於 0.18 秒內全數載入完畢。
-5. **🧹 孤立殘留檔案清理 (Leftover Scanner)**：
-   - 掃描過去已直接被丟入垃圾桶、但在 `~/Library` 中遺留數 GB 的舊資料，支援一鍵批次全清除。
-6. **🛡️ 系統垃圾桶安全機制 (Safe Trash Routing)**：
-   - 所有刪除皆調用 macOS 官方 `trashItem` API，非永久破壞性抹除，隨時可在 Finder 垃圾桶還原。
-
----
-
-## 📦 安裝與執行
-
-### 直接開啟使用
-Release 版本已完成 Ad-hoc 簽名與 DMG 映像檔封裝：
 ```bash
-# 直接啟動
-open ./AppSweep.app
-
-# 或開啟安裝映像檔安裝至 /Applications
-open ./AppSweep.dmg
+swift build          # 開發版
+swift run Uproot     # 直接執行
+swift test           # 單元測試
+./bundle.sh          # 產生 Uproot.app 與 Uproot.dmg（ad-hoc 簽章）
 ```
 
-### 原始碼構建
-```bash
-cd <專案資料夾>
+版本號在 `VERSION`，build 號取 git commit 數。變更記錄見 `CHANGELOG.md`。
 
-# 執行 6 項核心單元測試
-swift test
+## 安裝與授權
 
-# 重新構建 Release 版 .app 與 .dmg
-./bundle.sh
-```
+1. 打開 `Uproot.dmg`，把 Uproot 拖進「應用程式」。
+2. 第一次開啟：這是 ad-hoc 簽章（沒有 Apple Developer ID），macOS 會擋下。到「系統設定 › 隱私權與安全性」最下方按「仍要打開」，或在 Finder 對 Uproot 按右鍵 › 打開。
+3. 授權「完全取用磁碟」：「系統設定 › 隱私權與安全性 › 完全取用磁碟」按 + 加入 Uproot 並打開。沒有這個權限也能用，只是沙盒容器（`~/Library/Containers`）無法移除。
+
+為什麼可以放心授權：
+- 原始碼都在這個 repo，沒有任何網路功能。
+- 只會「移到垃圾桶」，不會永久刪除；每一個路徑都先經過 `isSafeToDelete` 白名單檢查（見上方安全設計與 `Tests/`）。
+- 管理者密碼只在要移動 `/Applications`、`/Library` 內 root 擁有的檔案時才會詢問，由 macOS 原生對話框處理，Uproot 拿不到密碼。
+
+注意：ad-hoc 簽章每次重新建置都會改變，macOS 會把新版當成不同的 App，**重新建置後需要再授權一次**。若要避免，可用固定的簽章身分（Apple Developer ID，或鑰匙圈中自建的程式碼簽署憑證）執行 `SIGN_IDENTITY="憑證名稱" ./bundle.sh`。

@@ -129,7 +129,7 @@ public actor Uninstaller {
                 } catch {
                     // Files inside the home folder are user-owned; root cannot bypass TCC there,
                     // so only system locations (/Applications, /Library) get the admin fallback.
-                    if item.url.path.hasPrefix(PathUtils.homeDirectory.path + "/") {
+                    if item.url.path.hasPrefix(PathUtils.homeDirectory.path + "/") || !Self.hasRootOnlyAncestors(item.url) {
                         recordFailure(item)
                     } else {
                         needsPrivilege.append(item)
@@ -139,6 +139,10 @@ public actor Uninstaller {
         }
 
         // Tier 3: one administrator prompt for every remaining item (root-owned files).
+        if !needsPrivilege.isEmpty && !Self.isRealUserDirectory(trashDir) {
+            needsPrivilege.forEach(recordFailure)
+            needsPrivilege = []
+        }
         if !needsPrivilege.isEmpty {
             var reserved = Set<String>()
             let pairs = needsPrivilege.map { item -> (URL, URL) in
@@ -171,6 +175,26 @@ public actor Uninstaller {
         (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true
     }
 
+    /// Root may only move an item if no ancestor folder could be swapped for a symlink by a non-admin
+    /// process between our check and the move: every ancestor must be a real directory owned by root
+    /// (admin group write is accepted) and not world-writable.
+    static func hasRootOnlyAncestors(_ url: URL) -> Bool {
+        var dir = url.deletingLastPathComponent().path
+        while true {
+            var st = stat()
+            guard lstat(dir, &st) == 0, (st.st_mode & S_IFMT) == S_IFDIR, st.st_uid == 0,
+                  st.st_mode & S_IWOTH == 0 else { return false }
+            if dir == "/" { return true }
+            dir = (dir as NSString).deletingLastPathComponent
+        }
+    }
+
+    /// The Trash must be a real directory owned by the current user (not a planted symlink).
+    static func isRealUserDirectory(_ url: URL) -> Bool {
+        var st = stat()
+        return lstat(url.path, &st) == 0 && (st.st_mode & S_IFMT) == S_IFDIR && st.st_uid == getuid()
+    }
+
     /// Returns a URL in `trashDir` that does not collide with an existing item.
     static func uniqueTrashURL(
         for source: URL,
@@ -200,7 +224,7 @@ public actor Uninstaller {
             "\"" + s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\""
         }
         let commands = pairs.map { src, dst in
-            "\"/bin/mv -n -- \" & quoted form of \(literal(src.path)) & \" \" & quoted form of \(literal(dst.path))"
+            "\"/bin/mv -n -h -- \" & quoted form of \(literal(src.path)) & \" \" & quoted form of \(literal(dst.path))"
         }
         return "do shell script (" + commands.joined(separator: " & \" ; \" & ") + ") with administrator privileges"
     }

@@ -45,9 +45,9 @@ public enum PathUtils {
             return (attrs?[.size] as? Int64) ?? 0
         }
 
-        // Count everything inside, nested bundles included (apps embed .app/.xpc/.framework packages),
-        // using allocated size so totals match Finder.
-        let keys: Set<URLResourceKey> = [.isRegularFileKey, .totalFileAllocatedSizeKey, .fileSizeKey]
+        // Count everything inside, nested bundles included (apps embed .app/.xpc/.framework packages).
+        // Logical size matches Finder's "Size" and Spotlight, so list and detail totals agree.
+        let keys: Set<URLResourceKey> = [.isRegularFileKey, .fileSizeKey]
         guard let enumerator = fileManager.enumerator(at: url, includingPropertiesForKeys: Array(keys), options: []) else {
             return 0
         }
@@ -55,7 +55,7 @@ public enum PathUtils {
         var totalSize: Int64 = 0
         for case let fileURL as URL in enumerator {
             guard let values = try? fileURL.resourceValues(forKeys: keys), values.isRegularFile == true else { continue }
-            totalSize += Int64(values.totalFileAllocatedSize ?? values.fileSize ?? 0)
+            totalSize += Int64(values.fileSize ?? 0)
         }
 
         return totalSize
@@ -130,8 +130,10 @@ public enum PathUtils {
         if sharedResidualRoots.contains(where: strictlyWithin) { return true }
 
         // App bundles: only in the standard application folders.
-        if p.hasSuffix(".app") && (strictlyWithin("/applications") || strictlyWithin(home + "/applications")) {
-            return true
+        for root in ["/applications", home + "/applications"] where p.hasSuffix(".app") && strictlyWithin(root) {
+            let relative = p.dropFirst(root.count + 1).split(separator: "/")
+            // "/Applications/X.app" or "/Applications/Vendor/X.app", never a bundle inside another bundle.
+            return relative.count <= 2 && !relative.dropLast().contains(where: { $0.hasSuffix(".app") })
         }
         return false
     }

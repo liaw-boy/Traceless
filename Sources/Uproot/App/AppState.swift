@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 import Combine
-import AppSweepCore
+import UprootCore
 
 public enum NavigationTab: String, CaseIterable, Identifiable {
     case apps = "應用程式"
@@ -380,7 +380,8 @@ public final class AppState: ObservableObject {
     public func executeResetApp() async {
         guard let app = selectedApp, !app.isSystemApp, !isUninstalling else { return }
         let nonBundleItems = residualItems
-            .filter { $0.category != .appBundle && !$0.isProtected }
+            // Reset only touches the user's own data; system-wide items need explicit selection + uninstall.
+            .filter { $0.category != .appBundle && !$0.isProtected && $0.url.path.hasPrefix(PathUtils.homeDirectory.path + "/") }
             .map { item -> ResidualItem in var copy = item; copy.isSelected = true; return copy }
         guard !nonBundleItems.isEmpty else {
             notify("\(app.name) 沒有可重置的資料", isError: true)
