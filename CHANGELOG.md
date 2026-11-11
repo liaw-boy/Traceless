@@ -27,6 +27,8 @@
 - App 大小包含內嵌的套件，列表與明細數字一致。
 
 ### 新增
+- 偵測虛擬音訊裝置驅動（`/Library/Audio/Plug-Ins/HAL`）：移除 App 時一併找出它的驅動；App 已刪而驅動還在時列為殘留。移除後自動重啟 coreaudiod，聲音選單中的裝置立即消失，不必重開機。
+- 系統層項目若與 App 由同一開發者團隊（程式碼簽章 Team ID）簽署，視為同一廠商並預先勾選。
 - 掃描 Application Scripts、Cookies、`/Library` 下的 Application Support／Caches／Logs、LaunchAgents／LaunchDaemons、PrivilegedHelperTools。
 - 側邊欄顯示版本號；⌘1～⌘3 切換頁面；⌘⌫ 移至垃圾桶。
 
@@ -36,6 +38,7 @@
 - 自訂勾選框（含部分勾選狀態）、篩選膠囊、品牌按鈕；工具列與版面同色，不再重複顯示頁面標題。
 - 新圖示：石墨色底上逐漸消散的白色 App 方塊，小尺寸自動簡化；深色與著色圖示模式下同樣清楚。
 - 新的「關於 Traceless」視窗。
+- App 列表的選取改為浮起的卡片，深色底的 App 圖示不會被選取底色吃掉。
 
 ## 1.0.0
 - 初版。

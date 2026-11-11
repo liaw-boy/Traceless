@@ -9,6 +9,7 @@ public actor ResidualScanner {
     public func scanResiduals(for app: AppInfo) async -> [ResidualItem] {
         var items: [ResidualItem] = []
         var visitedURLs: Set<URL> = []
+        let appTeamID = CodeSignature.teamID(of: app.url)
         // Apple apps keep user data (Notes, Mail, Photos…) in their containers: never pre-select it.
         let isAppleApp = app.isSystemApp || app.bundleIdentifier.lowercased().hasPrefix("com.apple.")
 
@@ -17,8 +18,10 @@ public actor ResidualScanner {
             // An Apple app's own bundle holds no user data, so it may be pre-selected; its data may not.
             // System-wide (/Library) items are never pre-selected: their match rests on names from an
             // untrusted Info.plist, and moving them needs root.
+            // Exception: a bundle signed by the same developer team as the app is proven to be its own.
             let isSystemWide = !url.path.hasPrefix(PathUtils.homeDirectory.path + "/") && category != .appBundle
-            let preselect = isSelected && !isProtected && !isSystemWide && (!isAppleApp || category == .appBundle)
+            let provenSameVendor = isSystemWide && appTeamID != nil && CodeSignature.teamID(of: url) == appTeamID
+            let preselect = isSelected && !isProtected && (!isSystemWide || provenSameVendor) && (!isAppleApp || category == .appBundle)
             let standardized = url.standardizedFileURL
             guard !visitedURLs.contains(standardized) else { return }
             guard fileManager.fileExists(atPath: standardized.path) else { return }
@@ -211,6 +214,17 @@ public actor ResidualScanner {
             }.forEach { addItem(url: $0, category: .launchAgents) }
         }
 
+        // 14. Virtual audio devices (HAL drivers) — these keep showing up in the Sound menu after the app is gone.
+        for halDir in [sharedLib.appendingPathComponent("Audio/Plug-Ins/HAL"), userLib.appendingPathComponent("Audio/Plug-Ins/HAL")] {
+            for driver in scanMatchingFiles(in: halDir, category: .audioPlugins, predicate: { $0.hasSuffix(".driver") }) {
+                let driverId = Bundle(url: driver)?.bundleIdentifier ?? ""
+                if Self.audioDriverBelongs(driverId: driverId, driverName: driver.deletingPathExtension().lastPathComponent,
+                                           bundleId: bundleId, appName: appName) {
+                    addItem(url: driver, category: .audioPlugins)
+                }
+            }
+        }
+
         // Sort: by category order first, then by size descending
         return items.sorted { lhs, rhs in
             if lhs.category.sortOrder != rhs.category.sortOrder {
@@ -237,6 +251,29 @@ public actor ResidualScanner {
     static func isRootOwned(_ url: URL) -> Bool {
         var st = stat()
         return lstat(url.path, &st) == 0 && st.st_uid == 0
+    }
+
+    /// A HAL driver belongs to the app when its id extends the app's id, or when it comes from the same
+    /// vendor ("com.microsoft") and names the same product ("teams" in MSTeamsAudioDevice).
+    public static func audioDriverBelongs(driverId: String, driverName: String, bundleId: String, appName: String) -> Bool {
+        let driver = driverId.lowercased()
+        let id = bundleId.lowercased()
+        guard !driver.hasPrefix("com.apple.") else { return false }
+        if !id.isEmpty && driver.hasPrefix(id + ".") { return true }
+        let appParts = id.split(separator: ".").map(String.init)
+        let driverParts = driver.split(separator: ".").map(String.init)
+        guard appParts.count >= 3, driverParts.count >= 3, appParts[0] == driverParts[0], appParts[1] == driverParts[1] else {
+            return false
+        }
+        func letters(_ s: String) -> String { s.lowercased().filter { $0.isLetter } }
+        var products = Set([letters(appParts[2])])
+        let vendor = letters(appParts[1])
+        for word in appName.split(whereSeparator: { !$0.isLetter && !$0.isNumber }) {
+            let w = letters(String(word))
+            if w != vendor { products.insert(w) }
+        }
+        let haystack = letters(driverParts.dropFirst(2).joined()) + letters(driverName)
+        return products.contains { $0.count >= 3 && haystack.contains($0) }
     }
 
     static func launchdProgram(_ plist: [String: Any]) -> String? {

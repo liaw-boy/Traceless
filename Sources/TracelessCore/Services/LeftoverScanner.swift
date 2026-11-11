@@ -306,6 +306,22 @@ public actor LeftoverScanner {
             }
         }
 
+        // 6. Virtual audio drivers whose app is gone (they linger in the Sound menu).
+        for halDir in [URL(fileURLWithPath: "/Library/Audio/Plug-Ins/HAL"), userLib.appendingPathComponent("Audio/Plug-Ins/HAL")] {
+            guard let drivers = try? fileManager.contentsOfDirectory(at: halDir, includingPropertiesForKeys: nil) else { continue }
+            for driver in drivers where driver.pathExtension == "driver" {
+                let driverId = Bundle(url: driver)?.bundleIdentifier ?? ""
+                let name = driver.deletingPathExtension().lastPathComponent
+                guard !driverId.isEmpty, !driverId.lowercased().hasPrefix("com.apple.") else { continue }
+                let owned = installedApps.contains {
+                    ResidualScanner.audioDriverBelongs(driverId: driverId, driverName: name, bundleId: $0.bundleIdentifier, appName: $0.name)
+                }
+                if !owned {
+                    registerOrphan(groupKey: driverId, displayName: name, url: driver, category: .audioPlugins)
+                }
+            }
+        }
+
         return candidateGroups.map { key, val in
             LeftoverAppGroup(id: key, name: val.name, items: val.items.sorted { $0.size > $1.size })
         }.sorted { $0.totalSize > $1.totalSize }

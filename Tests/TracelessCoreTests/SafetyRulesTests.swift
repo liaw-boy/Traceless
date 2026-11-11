@@ -201,3 +201,38 @@ final class AuditFixTests: XCTestCase {
         XCTAssertFalse(Uninstaller.isRealUserDirectory(link))
     }
 }
+
+final class AudioDriverTests: XCTestCase {
+    func testDriverOwnership() {
+        // Same vendor and product token.
+        XCTAssertTrue(ResidualScanner.audioDriverBelongs(driverId: "com.example.chat.ChatAudioDevice", driverName: "ExChatAudioDevice",
+                                                          bundleId: "com.example.chat2", appName: "Example Chat"))
+        // Driver id extends the app id.
+        XCTAssertTrue(ResidualScanner.audioDriverBelongs(driverId: "com.example.recorder.driver", driverName: "Recorder",
+                                                          bundleId: "com.example.recorder", appName: "Recorder"))
+        // Short product token is fine when the vendor matches.
+        XCTAssertTrue(ResidualScanner.audioDriverBelongs(driverId: "com.vendor.ABC.Driver", driverName: "ABC Device",
+                                                          bundleId: "com.vendor.ABC.App", appName: "ABC"))
+        // Same vendor, different product.
+        XCTAssertFalse(ResidualScanner.audioDriverBelongs(driverId: "com.example.meeting.Audio", driverName: "MeetingAudio",
+                                                           bundleId: "com.example.chat2", appName: "Example Chat"))
+        // Different vendor with a matching word.
+        XCTAssertFalse(ResidualScanner.audioDriverBelongs(driverId: "com.other.chat.Audio", driverName: "ChatAudio",
+                                                           bundleId: "com.example.chat", appName: "Chat"))
+        // Apple drivers are never claimed.
+        XCTAssertFalse(ResidualScanner.audioDriverBelongs(driverId: "com.apple.audio.Plugin", driverName: "Plugin",
+                                                           bundleId: "com.apple.audio", appName: "Audio"))
+    }
+
+    func testDriverPathsAreDeletableOnlyInsideHAL() {
+        XCTAssertTrue(PathUtils.isSafeToDelete(url: URL(fileURLWithPath: "/Library/Audio/Plug-Ins/HAL/Example.driver")))
+        XCTAssertFalse(PathUtils.isSafeToDelete(url: URL(fileURLWithPath: "/Library/Audio/Plug-Ins/HAL")))
+        XCTAssertFalse(PathUtils.isSafeToDelete(url: URL(fileURLWithPath: "/Library/Audio/Plug-Ins/Components/Example.component")))
+    }
+
+    func testPrivilegedScriptRestartsAudioOnlyWhenAsked() {
+        let pair = (URL(fileURLWithPath: "/Library/Audio/Plug-Ins/HAL/Example.driver"), URL(fileURLWithPath: "/tmp/Example.driver"))
+        XCTAssertTrue(Uninstaller.privilegedMoveScript([pair], restartAudio: true).contains("killall coreaudiod"))
+        XCTAssertFalse(Uninstaller.privilegedMoveScript([pair]).contains("killall"))
+    }
+}

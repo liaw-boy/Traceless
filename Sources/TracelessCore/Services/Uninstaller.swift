@@ -150,7 +150,8 @@ public actor Uninstaller {
                 reserved.insert(dst.path)
                 return (item.url, dst)
             }
-            runPrivileged(Self.privilegedMoveScript(pairs))
+            let removesAudioDriver = needsPrivilege.contains { $0.category == .audioPlugins }
+            runPrivileged(Self.privilegedMoveScript(pairs, restartAudio: removesAudioDriver))
             for item in needsPrivilege {
                 if !fileManager.fileExists(atPath: item.url.path) && !isSymlink(item.url) {
                     trashedCount += 1
@@ -219,12 +220,17 @@ public actor Uninstaller {
 
     /// Builds an AppleScript that moves every pair with root privileges.
     /// Paths are passed through `quoted form of` so the shell never interprets them.
-    static func privilegedMoveScript(_ pairs: [(URL, URL)]) -> String {
+    /// `restartAudio` restarts coreaudiod afterwards so a removed virtual audio device disappears from
+    /// the Sound menu immediately (launchd relaunches it within a second).
+    static func privilegedMoveScript(_ pairs: [(URL, URL)], restartAudio: Bool = false) -> String {
         func literal(_ s: String) -> String {
             "\"" + s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\""
         }
-        let commands = pairs.map { src, dst in
+        var commands = pairs.map { src, dst in
             "\"/bin/mv -n -h -- \" & quoted form of \(literal(src.path)) & \" \" & quoted form of \(literal(dst.path))"
+        }
+        if restartAudio {
+            commands.append("\"/usr/bin/killall coreaudiod\"")
         }
         return "do shell script (" + commands.joined(separator: " & \" ; \" & ") + ") with administrator privileges"
     }

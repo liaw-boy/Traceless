@@ -11,6 +11,10 @@ enum Palette {
     static let accent = dynamic(light: 0x1D1D1F, dark: 0xEDEDEF)        // selection, checkbox, primary action
     static let accentFill = accent
     static let onAccent = dynamic(light: 0xFFFFFF, dark: 0x1D1D1F)      // text/marks on accent fills
+    /// Selected rows that show app icons: a raised neutral card, never a dark fill, because many
+    /// app icons have dark backgrounds and would vanish into it.
+    static let selection = dynamic(light: 0xFFFFFF, dark: 0x2E2E33)
+    static let selectionBorder = dynamic(light: 0xD2D2D7, dark: 0x3E3E45)
     static let accentWash = dynamic(light: 0xE8E8EA, dark: 0x2A2A2E)    // hover
     static let canvas = dynamic(light: 0xF5F5F7, dark: 0x161618)        // window background
     static let sidebar = dynamic(light: 0xEDEDEF, dark: 0x111113)
@@ -52,6 +56,7 @@ extension ResidualCategory {
         case .webData: return Palette.dynamic(light: 0xA2615E, dark: 0xC98986)
         case .logs: return Palette.dynamic(light: 0x8C7B6B, dark: 0xB2A291)
         case .launchAgents: return Palette.dynamic(light: 0x9A4F3C, dark: 0xC27762)
+        case .audioPlugins: return Palette.dynamic(light: 0x3F7F8C, dark: 0x6FB0BD)
         case .other: return Palette.muted
         }
     }

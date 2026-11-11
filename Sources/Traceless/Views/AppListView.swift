@@ -116,11 +116,11 @@ private struct AppRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(app.name)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 13, weight: isSelected ? .bold : .semibold))
                         .lineLimit(1)
                     if isRunning {
                         Circle()
-                            .fill(isSelected ? Palette.onAccent : Palette.accent)
+                            .fill(Palette.accent)
                             .frame(width: 6, height: 6)
                             .help("執行中")
                             .accessibilityLabel("執行中")
@@ -137,12 +137,17 @@ private struct AppRow: View {
             Text(app.formattedSize)
                 .font(.display(12, .medium))
                 .monospacedDigit()
-                .foregroundStyle(isSelected ? Palette.onAccent.opacity(0.85) : Palette.muted)
+                .foregroundStyle(isSelected ? Palette.ink : Palette.muted)
         }
-        .foregroundStyle(isSelected ? Palette.onAccent : Palette.ink)
+        .foregroundStyle(Palette.ink)
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
         .background(background, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .strokeBorder(isSelected ? Palette.selectionBorder : .clear, lineWidth: 0.5)
+        )
+        .shadow(color: .black.opacity(isSelected ? 0.06 : 0), radius: 3, y: 1)
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
         .accessibilityElement(children: .combine)
@@ -150,12 +155,11 @@ private struct AppRow: View {
     }
 
     private var background: Color {
-        if isSelected { return Palette.accentFill }
+        if isSelected { return Palette.selection }
         return isHovered ? Palette.accentWash.opacity(0.6) : .clear
     }
 
     private var subtitleColor: Color {
-        if isSelected { return Palette.onAccent.opacity(0.75) }
         return app.isUnusedOver3Months && !app.isSystemApp ? Palette.ochre : Palette.muted
     }
 }

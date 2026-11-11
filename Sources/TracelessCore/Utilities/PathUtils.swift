@@ -120,13 +120,13 @@ public enum PathUtils {
         let userResidualRoots = ["application support", "application scripts",
                                  "caches", "preferences", "containers", "group containers",
                                  "saved application state", "logs", "launchagents", "webkit",
-                                 "httpstorages", "cookies"]
+                                 "httpstorages", "cookies", "audio/plug-ins/hal"]
         if userResidualRoots.contains(where: { within(lib + "/" + $0) && !(p == lib + "/" + $0) }) {
             return true
         }
         let sharedResidualRoots = ["/library/application support", "/library/caches", "/library/logs",
                                    "/library/launchagents", "/library/launchdaemons",
-                                   "/library/privilegedhelpertools"]
+                                   "/library/privilegedhelpertools", "/library/audio/plug-ins/hal"]
         if sharedResidualRoots.contains(where: strictlyWithin) { return true }
 
         // App bundles: only in the standard application folders.
