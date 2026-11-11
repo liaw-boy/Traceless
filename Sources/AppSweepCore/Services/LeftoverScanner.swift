@@ -88,6 +88,9 @@ public actor LeftoverScanner {
         "com.apple", "Biome", "HomeKit", "CoreData", "Spotlight", "Suggestions"
     ]
 
+    static let sensitiveKeywords = ["1password", "bitwarden", "lastpass", "dashlane", "keepass", "enpass",
+                                    "keychain", "gnupg", "gpg", "ssh", "yubico", "authy", "wallet"]
+
     private lazy var lowercasedSystemIdentifiers = Set(knownSystemIdentifiers.map { $0.lowercased() })
 
     private let knownVendorDirectories: Set<String> = [
@@ -149,6 +152,11 @@ public actor LeftoverScanner {
             let bundleName = app.url.deletingPathExtension().lastPathComponent.lowercased()
             installedNames.insert(bundleName)
             normalizedInstalledNames.insert(sanitizeToken(bundleName))
+        }
+
+        // Running processes count as installed (e.g. apps launched from a disk image or build folder).
+        for running in NSWorkspace.shared.runningApplications {
+            if let id = running.bundleIdentifier { installedIDs.insert(id.lowercased()) }
         }
 
         var candidateGroups: [String: (name: String, items: [ResidualItem])] = [:]
@@ -310,6 +318,11 @@ public actor LeftoverScanner {
 
         // 1. Apple and macOS system identifiers
         if lower.starts(with: "com.apple.") || lowercasedSystemIdentifiers.contains(lower) {
+            return false
+        }
+
+        // Credentials and keys are never offered for cleanup, even if their app looks gone.
+        if Self.sensitiveKeywords.contains(where: token.contains) {
             return false
         }
 

@@ -109,3 +109,49 @@ final class SafetyRulesTests: XCTestCase {
         XCTAssertTrue(AppScanner.shouldSkipSpotlightPath("/Users/someone/.Trash/Old.app"))
     }
 }
+
+final class PathSafetyTests: XCTestCase {
+    private let lib = PathUtils.userLibrary
+
+    func testRejectsTraversalAndCaseAliases() {
+        XCTAssertFalse(PathUtils.isSafeToDelete(url: URL(fileURLWithPath: lib.path + "/Caches/../../Documents")))
+        XCTAssertFalse(PathUtils.isSafeToDelete(url: URL(fileURLWithPath: "/SYSTEM/Library/CoreServices")))
+        XCTAssertFalse(PathUtils.isSafeToDelete(url: URL(fileURLWithPath: PathUtils.homeDirectory.path + "/DOCUMENTS/report.txt")))
+        XCTAssertFalse(PathUtils.isSafeToDelete(url: URL(fileURLWithPath: lib.path + "/Caches/bad\u{0007}name")))
+    }
+
+    func testRejectsApprovedRootsThemselves() {
+        for root in ["Caches", "Application Scripts", "Cookies", "LaunchAgents", "HTTPStorages"] {
+            XCTAssertFalse(PathUtils.isSafeToDelete(url: lib.appendingPathComponent(root)), root)
+        }
+        XCTAssertFalse(PathUtils.isSafeToDelete(url: URL(fileURLWithPath: "/Library/LaunchDaemons")))
+        XCTAssertFalse(PathUtils.isSafeToDelete(url: URL(fileURLWithPath: "/Library/PrivilegedHelperTools")))
+        XCTAssertFalse(PathUtils.isSafeToDelete(url: PathUtils.homeDirectory.appendingPathComponent(".Trash/Old.app")))
+    }
+
+    func testAllowsKnownResidualLocations() {
+        XCTAssertTrue(PathUtils.isSafeToDelete(url: lib.appendingPathComponent("Application Scripts/com.example.app")))
+        XCTAssertTrue(PathUtils.isSafeToDelete(url: lib.appendingPathComponent("Cookies/com.example.app.binarycookies")))
+        XCTAssertTrue(PathUtils.isSafeToDelete(url: URL(fileURLWithPath: "/Library/LaunchDaemons/com.example.app.helper.plist")))
+        XCTAssertTrue(PathUtils.isSafeToDelete(url: URL(fileURLWithPath: "/Library/PrivilegedHelperTools/com.example.app.helper")))
+        XCTAssertTrue(PathUtils.isSafeToDelete(url: URL(fileURLWithPath: "/Applications/Example.app")))
+        XCTAssertFalse(PathUtils.isSafeToDelete(url: URL(fileURLWithPath: "/Users/Shared/Example.app")))
+    }
+
+    func testPathComponentValidation() {
+        XCTAssertTrue(PathUtils.isSafePathComponent("com.example.app"))
+        XCTAssertTrue(PathUtils.isSafePathComponent("Example App"))
+        for bad in ["", ".", "..", "../Documents", "a/b", "a:b", "x\u{0000}y"] {
+            XCTAssertFalse(PathUtils.isSafePathComponent(bad), bad)
+        }
+    }
+
+    func testLaunchdOwnership() {
+        let appPath = "/Applications/Example.app"
+        XCTAssertTrue(ResidualScanner.launchdJobBelongs(plist: ["Label": "com.example.app.helper"], filename: "x.plist", bundleId: "com.example.app", appPath: appPath))
+        XCTAssertTrue(ResidualScanner.launchdJobBelongs(plist: ["AssociatedBundleIdentifiers": ["com.example.app"]], filename: "com.vendor.daemon.plist", bundleId: "com.example.app", appPath: appPath))
+        XCTAssertTrue(ResidualScanner.launchdJobBelongs(plist: ["ProgramArguments": [appPath + "/Contents/MacOS/agent"]], filename: "com.vendor.daemon.plist", bundleId: "", appPath: appPath))
+        XCTAssertFalse(ResidualScanner.launchdJobBelongs(plist: ["Label": "com.example.application"], filename: "com.example.application.plist", bundleId: "com.example.app", appPath: appPath))
+        XCTAssertFalse(ResidualScanner.launchdJobBelongs(plist: ["Program": "/Applications/Example.app.bak/x"], filename: "y.plist", bundleId: "", appPath: appPath))
+    }
+}

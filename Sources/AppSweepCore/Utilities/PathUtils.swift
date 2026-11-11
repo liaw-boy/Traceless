@@ -69,114 +69,84 @@ public enum PathUtils {
     }
 
     /// Checks if a file or directory is safe to move to trash.
-    /// Strictly protects critical system directories, user personal data directories,
-    /// and ensures only approved residual locations or application bundles can be deleted.
+    /// Rejects traversal, control characters and symlinked parents, then requires the path to be
+    /// outside every protected location and inside an approved residual location.
+    /// Comparisons are case-insensitive because APFS volumes usually are.
     public static func isSafeToDelete(url: URL) -> Bool {
-        let normalized = url.standardizedFileURL.path
-
-        // Disallow root and empty paths
-        guard normalized != "/" && normalized.hasPrefix("/") else {
+        let raw = url.path
+        guard raw.hasPrefix("/"),
+              !raw.split(separator: "/").contains(".."),
+              !raw.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
             return false
         }
+        // Resolve symlinks in the parent so "~/Library/Caches/x -> ~/Documents" style tricks on a parent
+        // folder are judged by where they really point. The item itself may be a symlink: trashing moves the link.
+        let standardized = url.standardizedFileURL
+        let resolvedParent = standardized.deletingLastPathComponent().resolvingSymlinksInPath()
+        let resolved = resolvedParent.appendingPathComponent(standardized.lastPathComponent).path
+        return isAllowed(standardized.path) && isAllowed(resolved)
+    }
 
-        // 1. Prohibited Root and System Directories
-        let prohibitedExactPaths: Set<String> = [
-            "/", "/Applications", "/System", "/Library", "/usr", "/bin", "/sbin", "/private",
-            "/var", "/tmp", "/etc", "/Users", "/opt", "/Volumes",
-            homeDirectory.path,
-            userLibrary.path,
-            userLibrary.appendingPathComponent("Application Support").path,
-            userLibrary.appendingPathComponent("Caches").path,
-            userLibrary.appendingPathComponent("Preferences").path,
-            userLibrary.appendingPathComponent("Containers").path,
-            userLibrary.appendingPathComponent("Group Containers").path,
-            userLibrary.appendingPathComponent("Saved Application State").path,
-            userLibrary.appendingPathComponent("Logs").path,
-            userLibrary.appendingPathComponent("LaunchAgents").path,
-            userLibrary.appendingPathComponent("WebKit").path,
-            userLibrary.appendingPathComponent("HTTPStorages").path
-        ]
+    private static func isAllowed(_ path: String) -> Bool {
+        let p = path.lowercased()
+        let home = homeDirectory.path.lowercased()
+        let lib = home + "/library"
+        guard p != "/" && p.hasPrefix("/") else { return false }
 
-        if prohibitedExactPaths.contains(normalized) {
-            return false
+        func within(_ base: String) -> Bool { p == base || p.hasPrefix(base + "/") }
+        func strictlyWithin(_ base: String) -> Bool { p.hasPrefix(base + "/") }
+
+        // 1. Never the roots themselves.
+        let rootFolders = ["/", "/applications", "/system", "/library", "/usr", "/bin", "/sbin", "/private",
+                           "/var", "/tmp", "/etc", "/users", "/opt", "/volumes", home, lib]
+        if rootFolders.contains(p) { return false }
+
+        // 2. Never inside OS-owned trees.
+        let systemTrees = ["/system", "/usr", "/bin", "/sbin", "/etc", "/private", "/var",
+                           "/library/apple", "/library/preferences", "/library/extensions",
+                           "/library/systemextensions", "/library/security", "/library/keychains"]
+        if systemTrees.contains(where: within) { return false }
+
+        // 3. Never personal data or credentials in the home folder.
+        let personal = ["desktop", "documents", "downloads", "pictures", "music", "movies", "public",
+                        "developer", ".ssh", ".config", ".gnupg", ".aws", ".git", ".profile",
+                        ".zshrc", ".bashrc", ".bash_profile", ".trash"]
+        if personal.contains(where: { within(home + "/" + $0) }) { return false }
+
+        // 4. Never Apple's own data stores under Application Support.
+        let appleStores = ["keychains", "accounts", "addressbook", "callhistorydb", "callhistorytransactions",
+                           "clouddocs", "coresimulator", "developer", "fontcollections", "fonts",
+                           "identityservices", "keyboard", "messages", "photos", "safari",
+                           "personalizationportrait", "homekit", "reminders", "notes", "mail",
+                           "calendar", "coredata", "biome", "spotlight", "suggestions", "mobilesync",
+                           "knowledge", "com.apple.sharedfilelist", "com.apple.tcc"]
+        if appleStores.contains(where: { within(lib + "/application support/" + $0) }) { return false }
+        if within(lib + "/keychains") || within(lib + "/mail") || within(lib + "/messages") { return false }
+
+        // 5. Must be a direct-or-deeper child of an approved location (never the location itself).
+        let userResidualRoots = ["application support", "application scripts",
+                                 "caches", "preferences", "containers", "group containers",
+                                 "saved application state", "logs", "launchagents", "webkit",
+                                 "httpstorages", "cookies"]
+        if userResidualRoots.contains(where: { within(lib + "/" + $0) && !(p == lib + "/" + $0) }) {
+            return true
         }
+        let sharedResidualRoots = ["/library/application support", "/library/caches", "/library/logs",
+                                   "/library/launchagents", "/library/launchdaemons",
+                                   "/library/privilegedhelpertools"]
+        if sharedResidualRoots.contains(where: strictlyWithin) { return true }
 
-        // Prohibit all system core directories
-        let prohibitedSystemPrefixes = [
-            "/System", "/usr", "/bin", "/sbin", "/etc", "/private", "/var",
-            "/Library/Apple", "/Library/Preferences", "/Library/Extensions",
-            "/Library/SystemExtensions", "/Library/Security"
-        ]
-        for prefix in prohibitedSystemPrefixes {
-            if normalized == prefix || normalized.hasPrefix(prefix + "/") {
-                return false
-            }
+        // App bundles: only in the standard application folders.
+        if p.hasSuffix(".app") && (strictlyWithin("/applications") || strictlyWithin(home + "/applications")) {
+            return true
         }
+        return false
+    }
 
-        // 2. Strict Protection for User Personal Folders
-        // AppSweep must NEVER delete user personal documents, desktop files, downloads, code or developer files!
-        let protectedUserFolders = [
-            "Desktop", "Documents", "Downloads", "Pictures", "Music", "Movies",
-            "Developer", ".ssh", ".config", ".gnupg", ".aws", ".git", ".profile",
-            ".zshrc", ".bashrc", ".bash_profile", "Public"
-        ]
-        let homePrefix = homeDirectory.path + "/"
-        for folder in protectedUserFolders {
-            let fullFolderPath = homePrefix + folder
-            if normalized == fullFolderPath || normalized.hasPrefix(fullFolderPath + "/") {
-                return false
-            }
-        }
-
-        // 3. Protected macOS User Library Subdirectories
-        let protectedSystemSubdirs = [
-            "Keychains", "Accounts", "AddressBook", "CallHistoryDB", "CallHistoryTransactions",
-            "CloudDocs", "CoreSimulator", "Developer", "FontCollections", "Fonts",
-            "IdentityServices", "Keyboard", "Messages", "Photos", "Safari",
-            "PersonalizationPortrait", "HomeKit", "Reminders", "Notes", "Mail",
-            "Calendar", "CoreData", "Biome", "Spotlight", "Suggestions"
-        ]
-
-        let appSupportPrefix = userLibrary.appendingPathComponent("Application Support").path + "/"
-        for protected in protectedSystemSubdirs {
-            let protectedPath = appSupportPrefix + protected
-            if normalized == protectedPath || normalized.hasPrefix(protectedPath + "/") {
-                return false
-            }
-        }
-
-        // 4. Allowed Deletion Domains Allowlist
-        // Any deleted file MUST reside within authorized application or library residual folders:
-        let isApplicationBundle = normalized.hasSuffix(".app") && (
-            normalized.hasPrefix("/Applications/") ||
-            normalized.hasPrefix(homeDirectory.path + "/Applications/") ||
-            normalized.hasPrefix("/Users/")
-        )
-
-        let isApprovedUserLibraryResidual = normalized.hasPrefix(userLibrary.path + "/") && (
-            normalized.hasPrefix(userLibrary.appendingPathComponent("Application Support").path + "/") ||
-            normalized.hasPrefix(userLibrary.appendingPathComponent("Caches").path + "/") ||
-            normalized.hasPrefix(userLibrary.appendingPathComponent("Preferences").path + "/") ||
-            normalized.hasPrefix(userLibrary.appendingPathComponent("Containers").path + "/") ||
-            normalized.hasPrefix(userLibrary.appendingPathComponent("Group Containers").path + "/") ||
-            normalized.hasPrefix(userLibrary.appendingPathComponent("Saved Application State").path + "/") ||
-            normalized.hasPrefix(userLibrary.appendingPathComponent("Logs").path + "/") ||
-            normalized.hasPrefix(userLibrary.appendingPathComponent("LaunchAgents").path + "/") ||
-            normalized.hasPrefix(userLibrary.appendingPathComponent("WebKit").path + "/") ||
-            normalized.hasPrefix(userLibrary.appendingPathComponent("HTTPStorages").path + "/")
-        )
-
-        let isApprovedSharedLibraryResidual = normalized.hasPrefix("/Library/") && (
-            normalized.hasPrefix("/Library/Application Support/") ||
-            normalized.hasPrefix("/Library/Caches/") ||
-            normalized.hasPrefix("/Library/LaunchAgents/") ||
-            normalized.hasPrefix("/Library/LaunchDaemons/")
-        )
-
-        guard isApplicationBundle || isApprovedUserLibraryResidual || isApprovedSharedLibraryResidual else {
-            return false
-        }
-
-        return true
+    /// A name taken from an app's Info.plist is only used as a path component if it cannot escape
+    /// its parent folder (e.g. a hostile CFBundleIdentifier of "../../Documents").
+    public static func isSafePathComponent(_ name: String) -> Bool {
+        !name.isEmpty && name != "." && name != ".." && !name.contains("/") && !name.contains(":")
+            && !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })
     }
 }

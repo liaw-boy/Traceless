@@ -40,9 +40,14 @@ public actor ResidualScanner {
             isProtected: app.isSystemApp
         )
 
-        let bundleId = app.bundleIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
-        let appName = app.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let executable = app.executableName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Names come from the app's Info.plist (untrusted): drop any that could escape a folder.
+        func component(_ value: String?) -> String {
+            let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return PathUtils.isSafePathComponent(trimmed) ? trimmed : ""
+        }
+        let bundleId = component(app.bundleIdentifier)
+        let appName = component(app.name)
+        let executable: String? = component(app.executableName)
 
         let userLib = PathUtils.userLibrary
 
@@ -154,6 +159,48 @@ public actor ResidualScanner {
             }.forEach { addItem(url: $0, category: .launchAgents) }
         }
 
+        // 11. Application Scripts (sandboxed apps and their app groups)
+        let scriptsDir = userLib.appendingPathComponent("Application Scripts")
+        if !bundleId.isEmpty {
+            addItem(url: scriptsDir.appendingPathComponent(bundleId), category: .applicationSupport)
+            scanMatchingFiles(in: scriptsDir, category: .groupContainers) { filename in
+                filename.lowercased() != bundleId.lowercased() && Self.groupContainerMatches(filename, bundleId: bundleId)
+            }.forEach { addItem(url: $0, category: .groupContainers) }
+        }
+
+        // 12. System-wide locations (moving these asks for an administrator password once).
+        let sharedLib = URL(fileURLWithPath: "/Library")
+        if !bundleId.isEmpty {
+            addItem(url: sharedLib.appendingPathComponent("Application Support").appendingPathComponent(bundleId), category: .applicationSupport)
+            addItem(url: sharedLib.appendingPathComponent("Caches").appendingPathComponent(bundleId), category: .caches)
+        }
+        if !appName.isEmpty {
+            addItem(url: sharedLib.appendingPathComponent("Application Support").appendingPathComponent(appName), category: .applicationSupport)
+            addItem(url: sharedLib.appendingPathComponent("Logs").appendingPathComponent(appName), category: .logs)
+        }
+
+        // 13. launchd jobs and privileged helpers, matched by ownership rather than by name.
+        let launchdDirs = [userLaunchAgents,
+                           sharedLib.appendingPathComponent("LaunchAgents"),
+                           sharedLib.appendingPathComponent("LaunchDaemons")]
+        for dir in launchdDirs {
+            for plistURL in scanMatchingFiles(in: dir, category: .launchAgents, predicate: { $0.hasSuffix(".plist") }) {
+                let plist = NSDictionary(contentsOf: plistURL) as? [String: Any] ?? [:]
+                guard Self.launchdJobBelongs(plist: plist, filename: plistURL.lastPathComponent,
+                                             bundleId: bundleId, appPath: app.url.path) else { continue }
+                addItem(url: plistURL, category: .launchAgents)
+                if let program = Self.launchdProgram(plist), program.hasPrefix("/Library/PrivilegedHelperTools/") {
+                    addItem(url: URL(fileURLWithPath: program), category: .launchAgents)
+                }
+            }
+        }
+        if !bundleId.isEmpty {
+            scanMatchingFiles(in: sharedLib.appendingPathComponent("PrivilegedHelperTools"), category: .launchAgents) { filename in
+                let lower = filename.lowercased(), id = bundleId.lowercased()
+                return lower == id || lower.hasPrefix(id + ".")
+            }.forEach { addItem(url: $0, category: .launchAgents) }
+        }
+
         // Sort: by category order first, then by size descending
         return items.sorted { lhs, rhs in
             if lhs.category.sortOrder != rhs.category.sortOrder {
@@ -169,6 +216,27 @@ public actor ResidualScanner {
         let name = "." + filename.lowercased() + "."
         let id = bundleId.lowercased()
         return !id.isEmpty && name.contains("." + id + ".")
+    }
+
+    static func launchdProgram(_ plist: [String: Any]) -> String? {
+        (plist["Program"] as? String) ?? (plist["ProgramArguments"] as? [String])?.first
+    }
+
+    /// A launchd job belongs to the app when its label/file is the bundle id (or a dotted child of it),
+    /// it declares the app in AssociatedBundleIdentifiers, or its executable lives inside the app bundle.
+    static func launchdJobBelongs(plist: [String: Any], filename: String, bundleId: String, appPath: String) -> Bool {
+        let id = bundleId.lowercased()
+        if !id.isEmpty {
+            let label = ((plist["Label"] as? String) ?? filename.replacingOccurrences(of: ".plist", with: "")).lowercased()
+            let file = filename.lowercased().replacingOccurrences(of: ".plist", with: "")
+            if [label, file].contains(where: { $0 == id || $0.hasPrefix(id + ".") }) { return true }
+            let associated = (plist["AssociatedBundleIdentifiers"] as? [String]) ?? [(plist["AssociatedBundleIdentifiers"] as? String)].compactMap { $0 }
+            if associated.contains(where: { $0.lowercased() == id }) { return true }
+        }
+        if !appPath.isEmpty, let program = launchdProgram(plist), program.hasPrefix(appPath + "/") {
+            return true
+        }
+        return false
     }
 
     /// Crash/diagnostic reports are named "<App>-<date>.ips" or "<App>_<date>…".
