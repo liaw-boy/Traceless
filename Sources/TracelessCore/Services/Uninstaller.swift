@@ -147,7 +147,7 @@ public actor Uninstaller {
                 return (item.url, dst)
             }
             let removesAudioDriver = needsPrivilege.contains { $0.category == .audioPlugins }
-            runPrivileged(Self.privilegedMoveScript(pairs, restartAudio: removesAudioDriver))
+            await runPrivileged(Self.privilegedMoveScript(pairs, restartAudio: removesAudioDriver))
             for item in needsPrivilege {
                 if !fileManager.fileExists(atPath: item.url.path) && !isSymlink(item.url) {
                     trashedCount += 1
@@ -236,17 +236,20 @@ public actor Uninstaller {
     }
 
     /// Runs the script through osascript (no shell; NSAppleScript is not safe off the main thread).
-    private func runPrivileged(_ source: String) {
+    /// Waits via terminationHandler, not waitUntilExit: the password prompt can stay open for minutes
+    /// and must not pin a cooperative-pool thread.
+    private func runPrivileged(_ source: String) async {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         process.arguments = ["-e", source]
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
-        do {
-            try process.run()
-            process.waitUntilExit()
-        } catch {
-            return
+        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+            process.terminationHandler = { _ in done.resume() }
+            do { try process.run() } catch {
+                process.terminationHandler = nil
+                done.resume()
+            }
         }
     }
 }

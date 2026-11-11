@@ -51,9 +51,24 @@ public struct DriversView: View {
                             isPresented: $state.showDriverConfirm, titleVisibility: .visible) {
             Button("移至垃圾桶", role: .destructive) { Task { await state.trashSelectedDrivers() } }
         } message: {
-            Text("這些檔案在系統資料夾，會要求一次管理者密碼。硬體驅動要重新開機後才會完全卸載。清空垃圾桶前都能復原。")
+            Text(confirmMessage)
         }
         .task { if state.driverItems.isEmpty { await state.scanDrivers() } }
+    }
+
+    /// Mentions the password / restart only when the selection actually needs them.
+    private var confirmMessage: String {
+        let selected = state.selectedDriverItems
+        let home = PathUtils.homeDirectory.path + "/"
+        var lines: [String] = []
+        if selected.contains(where: { !($0.trashItem?.url.path.hasPrefix(home) ?? true) }) {
+            lines.append("部分檔案在系統資料夾，會要求一次管理者密碼。")
+        }
+        if selected.contains(where: { $0.kind == .legacyDriver }) {
+            lines.append("硬體驅動要重新開機後才會完全卸載。")
+        }
+        lines.append("清空垃圾桶前都能復原。")
+        return lines.joined(separator: "")
     }
 
     private var header: some View {
