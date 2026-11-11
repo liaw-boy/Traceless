@@ -14,8 +14,10 @@ public struct MainView: View {
             sidebar
                 .navigationSplitViewColumnWidth(min: 200, ideal: 216, max: 260)
         } detail: {
-            detail
-                .overlay(alignment: .bottom) { toast }
+            BelowToolbar {
+                detail
+            }
+            .overlay(alignment: .bottom) { toast }
         }
         .tint(Palette.accent)
         // Toolbar shares the canvas colour and drops the duplicate title; each page has its own heading.
@@ -27,14 +29,18 @@ public struct MainView: View {
             ToolbarItem {
                 Button {
                     Task {
-                        if state.activeTab == .leftovers { await state.scanLeftovers() } else { await state.loadApps() }
+                        switch state.activeTab {
+                        case .leftovers: await state.scanLeftovers()
+                        case .drivers: await state.scanDrivers()
+                        default: await state.loadApps()
+                        }
                     }
                 } label: {
                     Label("重新掃描", systemImage: "arrow.clockwise")
                 }
                 .help("重新掃描（⌘R）")
                 .keyboardShortcut("r", modifiers: .command)
-                .disabled(state.isLoadingApps || state.isLoadingLeftovers)
+                .disabled(state.isLoadingApps || state.isLoadingLeftovers || state.isLoadingDrivers)
             }
         }
         .sheet(isPresented: $state.showPermissionSheet) {
@@ -42,6 +48,7 @@ public struct MainView: View {
         }
         .task {
             await state.loadApps()
+            await state.scanDrivers()   // fills the sidebar badge so leftovers are noticed without digging
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             state.refreshPermissions()
@@ -67,6 +74,9 @@ public struct MainView: View {
         case .leftovers:
             LeftoverView(state: state)
                 .navigationTitle("殘留檔案")
+        case .drivers:
+            DriversView(state: state)
+                .navigationTitle("驅動與背景")
         }
     }
 
@@ -170,10 +180,16 @@ public struct MainView: View {
                     .font(.system(size: 13, weight: isOn ? .semibold : .regular))
                 Spacer()
                 if count > 0 {
+                    // Drivers left by removed apps are flagged in amber so users notice them.
+                    let alert = tab == .drivers
                     Text("\(count)")
-                        .font(.display(11, .medium))
+                        .font(.display(11, .semibold))
                         .monospacedDigit()
-                        .foregroundStyle(isOn ? Palette.onAccent.opacity(0.8) : Palette.muted)
+                        .foregroundStyle(alert ? Color.white : (isOn ? Palette.onAccent.opacity(0.8) : Palette.muted))
+                        .padding(.horizontal, alert ? 6 : 0)
+                        .padding(.vertical, alert ? 1 : 0)
+                        .background(alert ? Palette.ochre : Color.clear, in: Capsule())
+                        .help(alert ? "\(count) 個項目屬於已移除的 App" : "")
                 }
             }
             .foregroundStyle(isOn ? Palette.onAccent : Palette.ink)
@@ -191,6 +207,7 @@ public struct MainView: View {
         case .apps: return state.installedApps.count
         case .leftovers: return state.leftoverGroups.count
         case .dragDrop: return 0
+        case .drivers: return state.orphanDriverCount
         }
     }
 
@@ -232,6 +249,23 @@ private struct HideToolbarTitle: ViewModifier {
             content.toolbar(removing: .title)
         } else {
             content
+        }
+    }
+}
+
+/// Keeps a column's content below the toolbar. On macOS 26, NavigationSplitView sometimes lays a
+/// column out from the window top while still reporting the toolbar as a top safe-area inset (seen
+/// on pages whose body is mostly a ScrollView). Padding by the reported inset is exact either way:
+/// when SwiftUI already honours the safe area the reported inset is 0.
+private struct BelowToolbar<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        GeometryReader { proxy in
+            content()
+                .padding(.top, proxy.safeAreaInsets.top)
+                .frame(width: proxy.size.width, height: proxy.size.height + proxy.safeAreaInsets.top, alignment: .top)
+                .ignoresSafeArea(edges: .top)
         }
     }
 }

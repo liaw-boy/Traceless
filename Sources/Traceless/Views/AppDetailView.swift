@@ -254,6 +254,7 @@ public struct AppDetailView: View {
                 .font(.system(size: 12))
                 .foregroundStyle(Palette.muted)
                 .monospacedDigit()
+                .lineLimit(1)
 
             Button {
                 state.showConfirmSheet = true

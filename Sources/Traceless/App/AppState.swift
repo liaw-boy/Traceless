@@ -7,6 +7,7 @@ public enum NavigationTab: String, CaseIterable, Identifiable {
     case apps = "應用程式"
     case dragDrop = "拖曳移除"
     case leftovers = "殘留檔案"
+    case drivers = "驅動與背景"
 
     public var id: String { rawValue }
 
@@ -15,6 +16,7 @@ public enum NavigationTab: String, CaseIterable, Identifiable {
         case .apps: return "square.grid.2x2"
         case .dragDrop: return "square.and.arrow.down"
         case .leftovers: return "folder.badge.questionmark"
+        case .drivers: return "cpu"
         }
     }
 }
@@ -78,6 +80,10 @@ public final class AppState: ObservableObject {
     @Published public var leftoverFilterMode: LeftoverFilterMode = .all
     @Published public var leftoverSortOption: LeftoverSortOption = .sizeDesc
     @Published public var inspection = InspectionReport()
+    @Published public var driverItems: [DriverItem] = []
+    @Published public var isLoadingDrivers = false
+    @Published public var showOnlyOrphanDrivers = true
+    @Published public var showDriverConfirm = false
 
     // Search & Filter (Apps)
     @Published public var searchText: String = ""
@@ -103,6 +109,7 @@ public final class AppState: ObservableObject {
     private let leftoverScanner = LeftoverScanner()
     private let uninstaller = Uninstaller()
     private let systemInspector = SystemInspector()
+    private let driverInventory = DriverInventory()
 
     public init() {}
 
@@ -463,6 +470,59 @@ public final class AppState: ObservableObject {
         if !app.isTerminated { app.forceTerminate() }
         inspection.ghostProcesses.removeAll { $0.id == ghost.id }
         notify("已結束「\(ghost.name)」")
+    }
+
+    // MARK: Drivers & background
+
+    public var orphanDriverCount: Int { driverItems.filter(\.isOrphaned).count }
+
+    public var visibleDriverItems: [DriverItem] {
+        var list = showOnlyOrphanDrivers ? driverItems.filter(\.isOrphaned) : driverItems
+        let q = searchText.trimmingCharacters(in: .whitespaces).lowercased()
+        if !q.isEmpty {
+            list = list.filter { $0.name.lowercased().contains(q) || $0.vendor.lowercased().contains(q) || $0.detail.lowercased().contains(q) }
+        }
+        return list
+    }
+
+    public var selectedDriverItems: [DriverItem] { driverItems.filter { $0.isSelected && $0.trashItem != nil } }
+
+    public func scanDrivers() async {
+        guard !isLoadingDrivers else { return }
+        isLoadingDrivers = true
+        while isLoadingApps { try? await Task.sleep(nanoseconds: 100_000_000) }
+        if installedApps.isEmpty { await loadApps() }
+        driverItems = await driverInventory.scan(installedApps: installedApps)
+        isLoadingDrivers = false
+    }
+
+    public func toggleDriver(_ id: String) {
+        guard let i = driverItems.firstIndex(where: { $0.id == id }), driverItems[i].trashItem != nil else { return }
+        driverItems[i].isSelected.toggle()
+    }
+
+    public func setVendorSelection(_ vendor: String, select: Bool) {
+        let visible = Set(visibleDriverItems.map(\.id))
+        for i in driverItems.indices where driverItems[i].vendor == vendor && visible.contains(driverItems[i].id) && driverItems[i].trashItem != nil {
+            driverItems[i].isSelected = select
+        }
+    }
+
+    public func trashSelectedDrivers() async {
+        let items = selectedDriverItems.compactMap(\.trashItem)
+        guard !items.isEmpty, !isUninstalling else { return }
+        isUninstalling = true
+        let result = await uninstaller.uninstall(items: items, quitIfRunning: false)
+        lastResult = result
+        isUninstalling = false
+        report(result, success: "已移除 \(result.trashedCount) 個驅動或背景項目")
+        await scanDrivers()
+    }
+
+    public func quitDriverProcess(_ item: DriverItem) async {
+        guard case .quit(let pid) = item.removal else { return }
+        await quitGhost(GhostProcess(id: pid, name: item.name, bundleIdentifier: item.detail, path: item.detail))
+        driverItems.removeAll { $0.id == item.id }
     }
 
     public func revealInFinder(url: URL) {

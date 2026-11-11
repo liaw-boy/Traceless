@@ -306,30 +306,6 @@ public actor LeftoverScanner {
             }
         }
 
-        // 6. System-level bundles whose vendor has no installed app left: virtual audio drivers (they
-        //    linger in the Sound menu), kernel extensions and shared frameworks. Judged by vendor prefix
-        //    and code-signing Team ID rather than by name.
-        let installedTeams = CodeSignature.installedTeamIDs(installedApps.filter { !$0.isSystemApp })
-        let installedBundleIds = installedApps.map(\.bundleIdentifier)
-        let systemBundles: [(dir: URL, ext: String, category: ResidualCategory)] = [
-            (URL(fileURLWithPath: "/Library/Audio/Plug-Ins/HAL"), "driver", .audioPlugins),
-            (userLib.appendingPathComponent("Audio/Plug-Ins/HAL"), "driver", .audioPlugins),
-            (URL(fileURLWithPath: "/Library/Extensions"), "kext", .kernelExtensions),
-            (URL(fileURLWithPath: "/Library/Frameworks"), "framework", .frameworks),
-        ]
-        for (dir, ext, category) in systemBundles {
-            guard let bundles = try? fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { continue }
-            for url in bundles where url.pathExtension == ext {
-                guard let id = Bundle(url: url)?.bundleIdentifier,
-                      CodeSignature.isOrphanedVendorBundle(bundleId: id, teamID: CodeSignature.teamID(of: url),
-                                                           installedBundleIds: installedBundleIds, installedTeams: installedTeams),
-                      let vendor = CodeSignature.vendorPrefix(id) else { continue }
-                // Group by vendor so all of one company's leftovers sit together.
-                let vendorName = vendor.split(separator: ".").last.map { String($0).capitalized } ?? vendor
-                registerOrphan(groupKey: "vendor:" + vendor, displayName: "\(vendorName)（系統元件）", url: url, category: category)
-            }
-        }
-
         return candidateGroups.map { key, val in
             LeftoverAppGroup(id: key, name: val.name, items: val.items.sorted { $0.size > $1.size })
         }.sorted { $0.totalSize > $1.totalSize }

@@ -16,6 +16,13 @@ public struct GhostProcess: Identifiable, Hashable, Sendable {
     public let name: String
     public let bundleIdentifier: String
     public let path: String
+
+    public init(id: pid_t, name: String, bundleIdentifier: String, path: String) {
+        self.id = id
+        self.name = name
+        self.bundleIdentifier = bundleIdentifier
+        self.path = path
+    }
 }
 
 public struct InspectionReport: Sendable {

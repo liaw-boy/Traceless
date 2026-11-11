@@ -9,7 +9,9 @@
 - **應用程式**：列出 `/Applications`、`~/Applications` 與系統 App，可依「第三方／長期未開／系統」篩選，依大小、上次開啟、安裝時間、名稱排序。
 - **相關檔案**：依 bundle ID 與名稱比對 `~/Library` 與 `/Library` 下的偏好設定、Application Support、Caches、Containers、Group Containers、Application Scripts、Saved State、WebKit / Cookies、Logs、LaunchAgents / LaunchDaemons、PrivilegedHelperTools、虛擬音訊裝置驅動（HAL）。launchd 項目依擁有權判定（Label、AssociatedBundleIdentifiers、Program 路徑）。
 - **重置**：保留 App 本體，只清除它的資料，讓它回到剛安裝的狀態。
-- **殘留檔案與系統深度檢查**：找出已刪除 App 留下的資料夾，以及仍留在系統的核心延伸、共用框架、音訊驅動、系統延伸功能與仍在執行的背景程式（狀態列殘留常見來源）。系統元件以程式碼簽章 Team ID 判斷歸屬；預設全部不勾選，需自行確認。
+- **殘留檔案**：找出已刪除 App 留下的資料夾。預設全部不勾選，需自行確認。
+- **驅動與背景**：列出所有第三方驅動、虛擬音訊／鏡頭、網路延伸、開機背景服務與輔助程式，用白話說明用途，標出哪些屬於已移除的 App（以程式碼簽章 Team ID 判斷）。能刪的移到垃圾桶，macOS 只允許在系統設定關閉的則寫明位置並提供直達按鈕。
+- **外觀**：跟隨系統、淺色或深色（設定 ⌘,）。
 - **拖曳移除**：把任何 `.app` 拖進視窗即可分析。
 
 ## 安全設計
