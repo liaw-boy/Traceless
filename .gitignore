@@ -1,0 +1,12 @@
+.DS_Store
+.build/
+.swiftpm/
+*.xcodeproj/
+xcuserdata/
+# Build outputs (regenerate with ./bundle.sh)
+AppSweep.app/
+*.dmg
+Resources/AppIcon.iconset/
+Resources/AppIcon.icns
+.env
+*.p12
