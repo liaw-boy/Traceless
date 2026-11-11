@@ -16,7 +16,7 @@ swift test --filter TracelessCoreTests.SafetyRulesTests/testLaunchAgentMatching 
 
 - `bundle.sh` regenerates the icon (`scripts/generate_icon.swift` → `Resources/AppIcon.iconset` → `.icns`), writes `Info.plist` inline with the version from `VERSION` and build number = git commit count, codesigns ad-hoc, and packages the DMG. `Traceless.app`, `*.dmg`, `Resources/AppIcon.*` and `.build/` are git-ignored build outputs. Record user-visible changes in `CHANGELOG.md` and bump `VERSION` when releasing.
 - Some tests (`testAppScanner`, `testLeftoverScannerDoesNotFlagInstalledApps`) read the real `/Applications` and `~/Library`, so results depend on the machine.
-- Icon is drawn in code by `scripts/generate_icon.swift` (flat colours, no gradients).
+- Icon is drawn in code by `scripts/generate_icon.swift`: an app tile dissolving into smaller squares, solid white on pine, simplified fragments at ≤64 px. Preview a dark-mode render with `--dark`.
 
 ## Architecture
 
@@ -30,6 +30,6 @@ Two targets (see `Package.swift`):
   - `PathUtils.isSafeToDelete` — the single safety gate every deletion passes through (blocks root/system dirs and the top-level `~/Library/*` folders themselves). Any new deletion path must go through it; `PathSafetyTests` and `testPathUtilsSafety` cover it.
   - Matching rules are `static` pure functions (`launchAgentMatches`, `groupContainerMatches`, `launchdJobBelongs`, `AppScanner.shouldSkipSpotlightPath`) so they can be unit-tested without touching the real `~/Library`.
   - All services are `actor`s; models are `Sendable`.
-- **`Traceless`** (executable, SwiftUI): `App/AppState.swift` is the single `@MainActor ObservableObject` holding all UI state (tabs, filters, sort, sheets, toasts) and owning the service actors; views in `Views/` read it. `NavigationTab`, `AppFilterMode`, `AppSortOption` are defined in `AppState.swift`. UI uses native SwiftUI controls (List, segmented Picker, checkbox Toggle, `.searchable`, `.confirmationDialog`) and system colors — no custom theme, no gradients. `Components/Theme.swift` only maps `ResidualCategory` to a tint and reads the bundle version.
+- **`Traceless`** (executable, SwiftUI): `App/AppState.swift` is the single `@MainActor ObservableObject` holding all UI state (tabs, filters, sort, sheets, toasts) and owning the service actors; views in `Views/` read it. `NavigationTab`, `AppFilterMode`, `AppSortOption` are defined in `AppState.swift`. UI has its own design system in `Components/Theme.swift`: `Palette` (dynamic light/dark colours — pine green brand, green-tinted canvas; `pineFill`/`brickFill` for fills under white text), `Font.display` (SF Rounded for names and numbers), `TraceMark` (the icon motif drawn with `Canvas`, same geometry as `scripts/generate_icon.swift`), `Checkbox` (flat, with mixed state), `FilterChips`, `SolidButtonStyle`, `QuietButtonStyle`. Use these instead of stock controls; no gradients or glow. The sidebar must stay a `List`: with a plain stack, `NavigationSplitView` on macOS 26 laid every column out under the toolbar.
 
 Business logic belongs in `TracelessCore` so it stays testable; the UI target has no tests.

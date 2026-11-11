@@ -5,62 +5,69 @@ import TracelessCore
 /// One file or folder that can be moved to the Trash.
 public struct ResidualItemRow: View {
     public let item: ResidualItem
+    public var isLocked = false
     public let onToggle: () -> Void
     public let onReveal: () -> Void
 
     @State private var isHovered = false
 
-    public init(item: ResidualItem, onToggle: @escaping () -> Void, onReveal: @escaping () -> Void) {
+    public init(item: ResidualItem, isLocked: Bool = false, onToggle: @escaping () -> Void, onReveal: @escaping () -> Void) {
         self.item = item
+        self.isLocked = isLocked
         self.onToggle = onToggle
         self.onReveal = onReveal
     }
 
+    private var canToggle: Bool { !item.isProtected && !isLocked }
+
     public var body: some View {
-        HStack(spacing: 10) {
-            Toggle("", isOn: Binding(get: { item.isSelected }, set: { _ in onToggle() }))
-                .toggleStyle(.checkbox)
-                .labelsHidden()
-                .disabled(item.isProtected)
+        HStack(spacing: 12) {
+            Checkbox(value: item.isSelected ? .on : .off, isEnabled: canToggle, action: onToggle)
 
             Image(nsImage: NSWorkspace.shared.icon(forFile: item.url.path))
                 .resizable()
-                .frame(width: 20, height: 20)
+                .frame(width: 22, height: 22)
 
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(item.name)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Palette.ink)
                         .lineLimit(1)
                     if item.isProtected {
                         StatusBadge(text: "受保護", icon: "lock.fill")
                     }
                 }
                 Text(item.path)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Palette.muted)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
 
             Spacer(minLength: 8)
 
-            if isHovered {
-                Button(action: onReveal) {
-                    Image(systemName: "magnifyingglass")
-                }
-                .buttonStyle(.borderless)
-                .help("在 Finder 中顯示")
+            Button(action: onReveal) {
+                Image(systemName: "arrow.up.forward.app")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Palette.muted)
             }
+            .buttonStyle(.plain)
+            .help("在 Finder 中顯示")
+            .opacity(isHovered ? 1 : 0)
+            .accessibilityLabel("在 Finder 中顯示")
 
             Text(item.formattedSize)
-                .font(.callout)
+                .font(.display(13, .medium))
                 .monospacedDigit()
-                .foregroundStyle(.secondary)
-                .frame(minWidth: 64, alignment: .trailing)
+                .foregroundStyle(item.isSelected ? Palette.ink : Palette.muted)
+                .frame(minWidth: 70, alignment: .trailing)
         }
-        .padding(.vertical, 2)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(isHovered ? Palette.canvas : Color.clear, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
         .contentShape(Rectangle())
-        .onTapGesture { if !item.isProtected { onToggle() } }
+        .onTapGesture { if canToggle { onToggle() } }
         .onHover { isHovered = $0 }
         .contextMenu {
             Button("在 Finder 中顯示", action: onReveal)
@@ -70,7 +77,6 @@ public struct ResidualItemRow: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityValue(item.isSelected ? "已勾選" : "未勾選")
         .accessibilityAddTraits(.isButton)
     }
 }

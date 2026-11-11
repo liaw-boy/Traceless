@@ -6,102 +6,122 @@ public struct AppDetailView: View {
     @ObservedObject var state: AppState
 
     public var body: some View {
-        if let app = state.selectedApp {
-            VStack(spacing: 0) {
-                header(app)
-                Divider()
-                content(app)
-                Divider()
-                footer(app)
-            }
-            .confirmationDialog(
-                "要將 \(state.selectedResiduals.count) 個項目移至垃圾桶嗎？",
-                isPresented: $state.showConfirmSheet,
-                titleVisibility: .visible
-            ) {
-                Button("移至垃圾桶", role: .destructive) {
-                    Task { await state.executeUninstall() }
+        Group {
+            if let app = state.selectedApp {
+                VStack(spacing: 0) {
+                    hero(app)
+                    content(app)
+                    actionBar(app)
                 }
-            } message: {
-                Text(confirmMessage(app))
-            }
-            .confirmationDialog(
-                "要重置「\(app.name)」嗎？",
-                isPresented: $state.showResetConfirmSheet,
-                titleVisibility: .visible
-            ) {
-                Button("重置", role: .destructive) {
-                    Task { await state.executeResetApp() }
+                .confirmationDialog(
+                    "將 \(state.selectedResiduals.count) 個項目移至垃圾桶？",
+                    isPresented: $state.showConfirmSheet,
+                    titleVisibility: .visible
+                ) {
+                    Button("移至垃圾桶", role: .destructive) {
+                        Task { await state.executeUninstall() }
+                    }
+                } message: {
+                    Text(confirmMessage(app))
                 }
-            } message: {
-                Text("會保留應用程式本身，並把它的偏好設定、快取、容器與登入狀態移至垃圾桶。下次開啟時就像剛安裝一樣。")
+                .confirmationDialog(
+                    "重置「\(app.name)」？",
+                    isPresented: $state.showResetConfirmSheet,
+                    titleVisibility: .visible
+                ) {
+                    Button("重置", role: .destructive) {
+                        Task { await state.executeResetApp() }
+                    }
+                } message: {
+                    Text("App 本身會保留，它的偏好設定、快取、容器與登入狀態會移至垃圾桶。下次開啟時就像剛安裝。")
+                }
+            } else {
+                EmptyStateView(title: "選一個 App", message: "左邊選取後，這裡會列出它在 Mac 上留下的所有檔案。")
             }
-        } else {
-            ContentUnavailableView("選擇一個應用程式", systemImage: "app.dashed", description: Text("左側選取後，這裡會列出它在磁碟上的所有相關檔案。"))
         }
+        .background(Palette.surface)
     }
 
     private func confirmMessage(_ app: AppInfo) -> String {
-        var lines = ["將釋放 \(state.formattedTotalSelectedSize)。檔案會先放進垃圾桶，清空前都能復原。"]
+        var lines = ["可釋放 \(state.formattedTotalSelectedSize)。清空垃圾桶前都能復原。"]
         if app.isRunning && state.quitAppBeforeTrash {
             lines.append("「\(app.name)」正在執行，會先結束它。")
         }
         if state.selectedResiduals.contains(where: { !$0.url.path.hasPrefix(PathUtils.homeDirectory.path + "/") && $0.category != .appBundle }) {
-            lines.append("部分項目位於系統資料夾，可能需要輸入管理者密碼。")
+            lines.append("部分項目在系統資料夾，可能會要求管理者密碼。")
         }
         return lines.joined(separator: "\n")
     }
 
-    // MARK: Header
+    // MARK: Hero
 
-    private func header(_ app: AppInfo) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(nsImage: app.icon())
-                .resizable()
-                .frame(width: 56, height: 56)
+    private func hero(_ app: AppInfo) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .center, spacing: 16) {
+                Image(nsImage: app.icon())
+                    .resizable()
+                    .frame(width: 64, height: 64)
 
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(app.name)
-                        .font(.title2.weight(.semibold))
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text(app.name)
+                            .font(.display(24))
+                            .foregroundStyle(Palette.ink)
+                            .lineLimit(1)
+                        if app.isSystemApp {
+                            StatusBadge(text: "系統", icon: "lock.fill")
+                        }
+                        if app.isRunning {
+                            StatusBadge(text: "執行中", color: Palette.pine)
+                        }
+                    }
+                    Text(app.bundleIdentifier.isEmpty ? PathUtils.abbreviatingWithTilde(url: app.url) : app.bundleIdentifier)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Palette.muted)
+                        .textSelection(.enabled)
                         .lineLimit(1)
-                    if app.isSystemApp {
-                        StatusBadge(text: "系統", icon: "lock.fill")
+                }
+
+                Spacer(minLength: 12)
+
+                HStack(spacing: 8) {
+                    Button { state.revealInFinder(url: app.url) } label: {
+                        Label("在 Finder 顯示", systemImage: "folder")
                     }
-                    if app.isRunning {
-                        StatusBadge(text: "執行中", color: .green)
+                    .buttonStyle(QuietButtonStyle())
+                    if !app.isSystemApp {
+                        Button("重置…") { state.showResetConfirmSheet = true }
+                            .buttonStyle(QuietButtonStyle())
+                            .help("保留 App，只清除它的資料")
+                            .disabled(state.isUninstalling || state.isLoadingResiduals)
                     }
                 }
-                Text([app.version.isEmpty ? nil : "版本 \(app.version)", app.architecture, app.lastUsedDescription]
-                    .compactMap { $0 }.joined(separator: " · "))
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                Text(app.bundleIdentifier.isEmpty ? PathUtils.abbreviatingWithTilde(url: app.url) : app.bundleIdentifier)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.tertiary)
-                    .textSelection(.enabled)
-                    .lineLimit(1)
             }
 
-            Spacer()
-
-            HStack(spacing: 8) {
-                Button {
-                    state.revealInFinder(url: app.url)
-                } label: {
-                    Image(systemName: "folder")
-                }
-                .help("在 Finder 中顯示")
-
-                if !app.isSystemApp {
-                    Button("重置…") { state.showResetConfirmSheet = true }
-                        .help("保留應用程式，只清除它的資料")
-                        .disabled(state.isUninstalling || state.isLoadingResiduals)
-                }
+            // Facts as label/value pairs rather than one run-on line.
+            HStack(alignment: .top, spacing: 28) {
+                fact("版本", app.version.isEmpty ? "—" : app.version)
+                fact("架構", app.architecture)
+                fact("上次開啟", app.lastUsedDescription)
+                fact("位置", PathUtils.abbreviatingWithTilde(url: app.url.deletingLastPathComponent()))
             }
-            .controlSize(.regular)
         }
-        .padding(16)
+        .padding(.horizontal, 24)
+        .padding(.top, 22)
+        .padding(.bottom, 18)
+    }
+
+    private func fact(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label)
+                .font(.system(size: 11))
+                .foregroundStyle(Palette.muted)
+            Text(value)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Palette.ink)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
     }
 
     // MARK: Content
@@ -109,48 +129,62 @@ public struct AppDetailView: View {
     @ViewBuilder
     private func content(_ app: AppInfo) -> some View {
         if state.isLoadingResiduals {
-            ProgressView("正在尋找相關檔案…")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            VStack(spacing: 12) {
+                ProgressView().controlSize(.small)
+                Text("正在尋找它留下的檔案")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Palette.muted)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if state.residualItems.isEmpty {
-            ContentUnavailableView("沒有找到相關檔案", systemImage: "checkmark.circle", description: Text("這個應用程式沒有在資料庫中留下其他資料。"))
+            EmptyStateView(title: "沒有找到相關檔案", message: "這個 App 沒有在資料庫留下其他東西。")
         } else {
             VStack(alignment: .leading, spacing: 0) {
-                if app.isSystemApp {
-                    Label("系統應用程式受 macOS 保護，無法移除。以下僅供檢視。", systemImage: "lock")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 16)
-                        .padding(.top, 12)
-                } else if !state.hasFullDiskAccess && state.residualItems.contains(where: { $0.category == .containers }) {
-                    permissionHint
-                }
                 StorageBreakdownBar(items: state.residualItems)
-                    .padding(16)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 14)
 
-                List {
-                    ForEach(categories, id: \.self) { category in
-                        section(category, locked: app.isSystemApp)
+                if app.isSystemApp {
+                    notice(icon: "lock", color: Palette.muted, text: "系統 App 受 macOS 保護，無法移除；以下只供檢視。")
+                } else if !state.hasFullDiskAccess && state.residualItems.contains(where: { $0.category == .containers }) {
+                    notice(icon: "exclamationmark.triangle.fill", color: Palette.ochre,
+                           text: "沙盒容器需要「完全取用磁碟」權限才能移除。") {
+                        Button("開啟設定") { PermissionManager.openFullDiskAccessSettings() }
+                            .buttonStyle(QuietButtonStyle())
                     }
                 }
-                .listStyle(.inset)
+
+                Rectangle().fill(Palette.hairline).frame(height: 0.5)
+
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                        ForEach(categories, id: \.self) { category in
+                            section(category, locked: app.isSystemApp)
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 14)
+                }
             }
         }
     }
 
-    private var permissionHint: some View {
+    private func notice(icon: String, color: Color, text: String) -> some View {
+        notice(icon: icon, color: color, text: text) { EmptyView() }
+    }
+
+    private func notice<Trailing: View>(icon: String, color: Color, text: String, @ViewBuilder trailing: () -> Trailing) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-            Text("沙盒容器需要「完全取用磁碟」權限才能移除。")
-                .font(.callout)
+            Image(systemName: icon).foregroundStyle(color)
+            Text(text).font(.system(size: 12)).foregroundStyle(Palette.ink)
             Spacer()
-            Button("開啟設定") { PermissionManager.openFullDiskAccessSettings() }
-                .controlSize(.small)
+            trailing()
         }
-        .padding(10)
-        .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(color.opacity(0.1), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .padding(.horizontal, 24)
+        .padding(.bottom, 12)
     }
 
     private var categories: [ResidualCategory] {
@@ -161,86 +195,89 @@ public struct AppDetailView: View {
         let items = state.residualItems.filter { $0.category == category }
         let selectable = items.filter { !$0.isProtected }
         let selectedCount = selectable.filter(\.isSelected).count
-        let checkState: Bool? = selectedCount == 0 ? false : (selectedCount == selectable.count ? true : nil)
+        let value: Checkbox.Value = selectedCount == 0 ? .off : (selectedCount == selectable.count ? .on : .mixed)
 
         return Section {
-            ForEach(items) { item in
-                ResidualItemRow(
-                    item: item,
-                    onToggle: { state.toggleItemSelection(id: item.id) },
-                    onReveal: { state.revealInFinder(url: item.url) }
-                )
-                .disabled(locked)
-            }
-        } header: {
-            HStack(spacing: 8) {
-                Toggle(isOn: Binding(get: { checkState ?? false }, set: { _ in state.toggleCategorySelection(category: category) })) {
-                    Label(category.displayName, systemImage: category.iconName)
+            VStack(spacing: 0) {
+                ForEach(items) { item in
+                    ResidualItemRow(
+                        item: item,
+                        isLocked: locked,
+                        onToggle: { state.toggleItemSelection(id: item.id) },
+                        onReveal: { state.revealInFinder(url: item.url) }
+                    )
+                    .transition(.asymmetric(insertion: .opacity, removal: .move(edge: .top).combined(with: .opacity)))
                 }
-                .toggleStyle(.checkbox)
-                .disabled(selectable.isEmpty || locked)
-                .modifier(MixedState(isMixed: checkState == nil))
-
+            }
+            .padding(.bottom, 14)
+        } header: {
+            HStack(spacing: 10) {
+                Checkbox(value: value, isEnabled: !selectable.isEmpty && !locked) {
+                    state.toggleCategorySelection(category: category)
+                }
+                RoundedRectangle(cornerRadius: 2).fill(category.tint).frame(width: 3, height: 14)
+                Text(category.displayName)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Palette.ink)
+                Text("\(items.count)")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Palette.muted)
                 Spacer()
                 Text(FileSizeFormatter.format(items.reduce(0) { $0 + $1.size }))
+                    .font(.display(13))
                     .monospacedDigit()
+                    .foregroundStyle(Palette.ink)
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Palette.surface)
         }
     }
 
-    // MARK: Footer
+    // MARK: Action bar
 
-    private func footer(_ app: AppInfo) -> some View {
-        HStack(spacing: 12) {
-            Toggle("先結束執行中的應用程式", isOn: $state.quitAppBeforeTrash)
-                .toggleStyle(.checkbox)
-                .font(.callout)
+    private func actionBar(_ app: AppInfo) -> some View {
+        HStack(spacing: 16) {
+            HStack(spacing: 8) {
+                Checkbox(value: state.quitAppBeforeTrash ? .on : .off) { state.quitAppBeforeTrash.toggle() }
+                Text("先結束執行中的 App")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Palette.muted)
+                    .onTapGesture { state.quitAppBeforeTrash.toggle() }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("先結束執行中的 App")
 
             Spacer()
 
-            VStack(alignment: .trailing, spacing: 1) {
-                Text("已選 \(state.selectedResiduals.count) 項")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(state.formattedTotalSelectedSize)
-                    .font(.headline)
-                    .monospacedDigit()
-            }
+            Text(summary)
+                .font(.system(size: 12))
+                .foregroundStyle(Palette.muted)
+                .monospacedDigit()
 
-            Button(role: .destructive) {
+            Button {
                 state.showConfirmSheet = true
             } label: {
-                if state.isUninstalling {
-                    ProgressView().controlSize(.small)
-                } else {
-                    Text("移至垃圾桶…")
+                HStack(spacing: 6) {
+                    if state.isUninstalling {
+                        ProgressView().controlSize(.small).tint(.white)
+                    }
+                    Text("移至垃圾桶")
                 }
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.red)
-            .controlSize(.large)
+            .buttonStyle(SolidButtonStyle(color: Palette.brickFill))
             .keyboardShortcut(.delete, modifiers: .command)
             .disabled(app.isSystemApp || state.selectedResiduals.isEmpty || state.isUninstalling || state.isLoadingResiduals)
-            .help(app.isSystemApp ? "系統應用程式無法移除" : "將勾選的項目移至垃圾桶（⌘⌫）")
+            .help(app.isSystemApp ? "系統 App 無法移除" : "將勾選的項目移至垃圾桶（⌘⌫）")
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 12)
+        .background(Palette.canvas)
+        .overlay(alignment: .top) { Rectangle().fill(Palette.hairline).frame(height: 0.5) }
     }
-}
 
-/// Shows a dash in a checkbox when only some items in a group are selected.
-struct MixedState: ViewModifier {
-    let isMixed: Bool
-    func body(content: Content) -> some View {
-        content.overlay(alignment: .leading) {
-            if isMixed {
-                // shortcut: SwiftUI has no native mixed checkbox on macOS 14; draw the dash over the box.
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(Color.accentColor)
-                    .frame(width: 8, height: 2)
-                    .padding(.leading, 3)
-                    .allowsHitTesting(false)
-            }
-        }
+    private var summary: String {
+        let count = state.selectedResiduals.count
+        return count == 0 ? "尚未勾選項目" : "已勾選 \(count) 項，可釋放 \(state.formattedTotalSelectedSize)"
     }
 }

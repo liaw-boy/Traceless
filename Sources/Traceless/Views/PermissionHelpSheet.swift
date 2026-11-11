@@ -8,15 +8,14 @@ public struct PermissionHelpSheet: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "lock.shield")
-                    .font(.system(size: 30))
-                    .foregroundStyle(.orange)
+            HStack(alignment: .top, spacing: 14) {
+                TraceMark(size: 36)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("需要「完全取用磁碟」權限")
-                        .font(.title3.weight(.semibold))
+                    Text("授權「完全取用磁碟」")
+                        .font(.display(19))
+                        .foregroundStyle(Palette.ink)
                     Text("macOS 會保護沙盒應用程式的容器資料夾（~/Library/Containers）。沒有這個權限，任何清理工具都無法移動它們。")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Palette.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -26,7 +25,7 @@ public struct PermissionHelpSheet: View {
                 Text("2. 按「開啟系統設定」，在「隱私權與安全性 › 完全取用磁碟」按 + 加入 Traceless，並打開開關。")
                 Text("3. 回到 Traceless，會自動重新檢查，不需要重新啟動。")
                 Text("Traceless 只會把檔案移到垃圾桶，不會讀取或上傳你的資料；整個程式不連網。")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Palette.muted)
                     .padding(.top, 2)
             }
             .font(.callout)
@@ -60,15 +59,18 @@ public struct PermissionHelpSheet: View {
             HStack {
                 Spacer()
                 Button("稍後") { dismiss() }
+                    .buttonStyle(QuietButtonStyle())
                     .keyboardShortcut(.cancelAction)
                 Button("開啟系統設定") {
                     PermissionManager.openFullDiskAccessSettings()
                     dismiss()
                 }
+                .buttonStyle(SolidButtonStyle())
                 .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(20)
-        .frame(width: 460)
+        .padding(24)
+        .frame(width: 480)
+        .background(Palette.surface)
     }
 }

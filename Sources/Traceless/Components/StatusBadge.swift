@@ -1,20 +1,20 @@
 import SwiftUI
 
-/// Small flat tag used for states such as "執行中" or "系統".
+/// Small flat tag for states such as "執行中" or "系統".
 public struct StatusBadge: View {
     let text: String
     var icon: String? = nil
-    var color: Color = .secondary
+    var color: Color = Palette.muted
 
     public var body: some View {
         HStack(spacing: 3) {
-            if let icon { Image(systemName: icon) }
+            if let icon { Image(systemName: icon).font(.system(size: 9, weight: .semibold)) }
             Text(text)
         }
-        .font(.caption2.weight(.medium))
+        .font(.system(size: 11, weight: .medium))
         .foregroundStyle(color)
-        .padding(.horizontal, 5)
-        .padding(.vertical, 1)
-        .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
+        .padding(.horizontal, 7)
+        .padding(.vertical, 2)
+        .background(color.opacity(0.13), in: Capsule())
     }
 }

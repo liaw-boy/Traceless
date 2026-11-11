@@ -1,7 +1,8 @@
 import SwiftUI
 import TracelessCore
 
-/// Proportional bar of where an app's disk usage lives, with a compact legend.
+/// The app's footprint shown as the recessed slot from the icon, filled in proportion to
+/// where its bytes live. Legend entries double as the reading of the bar.
 public struct StorageBreakdownBar: View {
     let items: [ResidualItem]
 
@@ -15,47 +16,60 @@ public struct StorageBreakdownBar: View {
     public var body: some View {
         let segments = self.segments
         let total = max(segments.reduce(0) { $0 + $1.size }, 1)
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             GeometryReader { geo in
-                HStack(spacing: 1) {
+                // Every segment gets a visible minimum; the rest is shared by size, so the sum always fits.
+                let minWidth: CGFloat = 4
+                let spare = max(0, geo.size.width - 6 - CGFloat(segments.count - 1) * 2 - minWidth * CGFloat(segments.count))
+                HStack(spacing: 2) {
                     ForEach(segments, id: \.category) { seg in
-                        Rectangle()
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
                             .fill(seg.category.tint)
-                            .frame(width: max(2, geo.size.width * CGFloat(seg.size) / CGFloat(total)))
+                            .frame(width: minWidth + spare * CGFloat(seg.size) / CGFloat(total))
                             .help("\(seg.category.displayName)：\(FileSizeFormatter.format(seg.size))")
                     }
+                    Spacer(minLength: 0)
                 }
+                .padding(3)
+                .frame(width: geo.size.width, height: geo.size.height, alignment: .leading)
+                .background(Palette.slot, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(Palette.hairline, lineWidth: 0.5)
+                )
             }
-            .frame(height: 8)
-            .clipShape(RoundedRectangle(cornerRadius: 3))
+            .frame(height: 20)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("儲存空間分布")
             .accessibilityValue(segments.map { "\($0.category.displayName) \(FileSizeFormatter.format($0.size))" }.joined(separator: "，"))
 
-            FlowLegend(segments: segments)
+            Legend(segments: segments)
         }
     }
 }
 
-private struct FlowLegend: View {
+private struct Legend: View {
     let segments: [(category: ResidualCategory, size: Int64)]
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 14) { entries }
-            VStack(alignment: .leading, spacing: 4) { entries }
+            HStack(spacing: 16) { entries }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), alignment: .leading)], alignment: .leading, spacing: 4) { entries }
         }
-        .font(.caption)
-        .foregroundStyle(.secondary)
     }
 
     @ViewBuilder private var entries: some View {
         ForEach(segments, id: \.category) { seg in
-            HStack(spacing: 5) {
-                Circle().fill(seg.category.tint).frame(width: 7, height: 7)
+            HStack(spacing: 6) {
+                RoundedRectangle(cornerRadius: 2).fill(seg.category.tint).frame(width: 8, height: 8)
                 Text(seg.category.displayName)
-                Text(FileSizeFormatter.format(seg.size)).monospacedDigit()
+                    .foregroundStyle(Palette.muted)
+                Text(FileSizeFormatter.format(seg.size))
+                    .font(.display(12, .medium))
+                    .monospacedDigit()
+                    .foregroundStyle(Palette.ink)
             }
+            .font(.system(size: 12))
             .fixedSize()
         }
     }

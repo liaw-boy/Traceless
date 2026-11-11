@@ -8,62 +8,86 @@ public struct LeftoverView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Picker("篩選", selection: $state.leftoverFilterMode) {
-                    ForEach(LeftoverFilterMode.allCases) { Text($0.rawValue).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
-
-                Spacer()
-
-                Menu {
-                    Picker("排序方式", selection: $state.leftoverSortOption) {
-                        ForEach(LeftoverSortOption.allCases) { Label($0.rawValue, systemImage: $0.icon).tag($0) }
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("已移除 App 留下的檔案")
+                            .font(.display(22))
+                            .foregroundStyle(Palette.ink)
+                        Text("這些資料夾找不到對應的已安裝 App。全部預設不勾選，確認後再清理。")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Palette.muted)
                     }
-                    .pickerStyle(.inline)
-                } label: {
-                    Image(systemName: "arrow.up.arrow.down")
+                    Spacer()
+                    if !state.leftoverGroups.isEmpty {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(FileSizeFormatter.format(state.leftoverGroups.reduce(0) { $0 + $1.totalSize }))
+                                .font(.display(22))
+                                .monospacedDigit()
+                                .foregroundStyle(Palette.ink)
+                            Text("\(state.leftoverGroups.count) 組殘留")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Palette.muted)
+                        }
+                    }
                 }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                .help("排序：\(state.leftoverSortOption.rawValue)")
+                HStack {
+                    FilterChips(options: LeftoverFilterMode.allCases, selection: $state.leftoverFilterMode)
+                    Spacer()
+                    Menu {
+                        Picker("排序方式", selection: $state.leftoverSortOption) {
+                            ForEach(LeftoverSortOption.allCases) { Label($0.rawValue, systemImage: $0.icon).tag($0) }
+                        }
+                        .pickerStyle(.inline)
+                    } label: {
+                        Image(systemName: "arrow.up.arrow.down").foregroundStyle(Palette.muted)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .help("排序：\(state.leftoverSortOption.rawValue)")
+                    .accessibilityLabel("排序方式")
+                }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 24)
+            .padding(.top, 20)
+            .padding(.bottom, 14)
 
-            Divider()
+            Rectangle().fill(Palette.hairline).frame(height: 0.5)
 
             if state.isLoadingLeftovers {
-                ProgressView("正在比對已移除應用程式留下的檔案…")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                VStack(spacing: 12) {
+                    ProgressView().controlSize(.small)
+                    Text("正在比對已移除 App 留下的檔案")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Palette.muted)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if state.filteredLeftoverGroups.isEmpty {
-                ContentUnavailableView {
-                    Label(state.leftoverGroups.isEmpty ? "沒有找到殘留檔案" : "沒有符合的項目", systemImage: "checkmark.circle")
-                } description: {
-                    Text("仍安裝中或正在執行的應用程式資料不會出現在這裡。")
-                } actions: {
+                EmptyStateView(
+                    title: state.leftoverGroups.isEmpty ? "沒有殘留檔案" : "沒有符合的項目",
+                    message: "仍安裝中、正在執行或最近 30 天有使用的資料不會出現在這裡。",
+                ) {
                     Button("重新掃描") { Task { await state.scanLeftovers() } }
+                        .buttonStyle(QuietButtonStyle())
                 }
             } else {
-                List {
-                    Text("以下資料夾找不到對應的已安裝應用程式。預設不勾選，請確認後再清理。")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .listRowSeparator(.hidden)
-                    ForEach(state.filteredLeftoverGroups) { group in
-                        groupSection(group)
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 10) {
+                        ForEach(state.filteredLeftoverGroups) { group in
+                            groupBlock(group)
+                        }
                     }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 14)
                 }
-                .listStyle(.inset)
             }
 
-            Divider()
-            footer
+            actionBar
         }
+        .background(Palette.surface)
         .confirmationDialog(
-            "要將 \(state.totalSelectedLeftoverCount) 個殘留項目移至垃圾桶嗎？",
+            "將 \(state.totalSelectedLeftoverCount) 個殘留項目移至垃圾桶？",
             isPresented: $state.showLeftoverConfirm,
             titleVisibility: .visible
         ) {
@@ -71,7 +95,7 @@ public struct LeftoverView: View {
                 Task { await state.executeAllSelectedLeftoversUninstall() }
             }
         } message: {
-            Text("將釋放 \(state.formattedTotalSelectedLeftoverSize)。清空垃圾桶前都能復原。")
+            Text("可釋放 \(state.formattedTotalSelectedLeftoverSize)。清空垃圾桶前都能復原。")
         }
         .task {
             if state.leftoverGroups.isEmpty {
@@ -80,86 +104,96 @@ public struct LeftoverView: View {
         }
     }
 
-    private func groupSection(_ group: LeftoverAppGroup) -> some View {
+    private func groupBlock(_ group: LeftoverAppGroup) -> some View {
         let selected = group.items.filter(\.isSelected).count
-        let checkState: Bool? = selected == 0 ? false : (selected == group.items.count ? true : nil)
+        let value: Checkbox.Value = selected == 0 ? .off : (selected == group.items.count ? .on : .mixed)
         let isExpanded = !collapsed.contains(group.id)
 
-        return Section {
-            if isExpanded {
-                ForEach(group.items) { item in
-                    ResidualItemRow(
-                        item: item,
-                        onToggle: { state.toggleLeftoverItem(groupId: group.id, itemId: item.id) },
-                        onReveal: { state.revealInFinder(url: item.url) }
-                    )
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                Checkbox(value: value) {
+                    state.toggleLeftoverGroupSelection(groupId: group.id, select: value != .on)
                 }
-            }
-        } header: {
-            HStack(spacing: 8) {
                 Button {
-                    if isExpanded { collapsed.insert(group.id) } else { collapsed.remove(group.id) }
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        if isExpanded { collapsed.insert(group.id) } else { collapsed.remove(group.id) }
+                    }
                 } label: {
-                    Image(systemName: "chevron.right")
-                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                        .frame(width: 12)
+                    HStack(spacing: 8) {
+                        Text(group.name)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Palette.ink)
+                            .lineLimit(1)
+                        if group.hasContainers {
+                            StatusBadge(text: "含容器", color: Palette.ochre)
+                        }
+                        Spacer()
+                        Text("\(group.items.count) 項")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Palette.muted)
+                        Text(group.formattedTotalSize)
+                            .font(.display(13))
+                            .monospacedDigit()
+                            .foregroundStyle(Palette.ink)
+                            .frame(minWidth: 70, alignment: .trailing)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Palette.muted)
+                            .rotationEffect(.degrees(isExpanded ? 0 : -90))
+                    }
+                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.borderless)
-                .accessibilityLabel(isExpanded ? "收合" : "展開")
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(group.name)，\(group.formattedTotalSize)")
+                .accessibilityHint(isExpanded ? "收合" : "展開")
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
 
-                Toggle(isOn: Binding(get: { checkState ?? false },
-                                     set: { _ in state.toggleLeftoverGroupSelection(groupId: group.id, select: checkState != true) })) {
-                    Text(group.name).fontWeight(.semibold)
+            if isExpanded {
+                VStack(spacing: 0) {
+                    ForEach(group.items) { item in
+                        ResidualItemRow(
+                            item: item,
+                            onToggle: { state.toggleLeftoverItem(groupId: group.id, itemId: item.id) },
+                            onReveal: { state.revealInFinder(url: item.url) }
+                        )
+                    }
                 }
-                .toggleStyle(.checkbox)
-                .modifier(MixedState(isMixed: checkState == nil))
-
-                if group.id != group.name {
-                    Text(group.id)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
-                Spacer()
-                Text("\(group.items.count) 項 · \(group.formattedTotalSize)")
-                    .monospacedDigit()
+                .padding(.leading, 18)
+                .padding(.bottom, 6)
             }
         }
+        .background(Palette.canvas.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
-    private var footer: some View {
-        HStack(spacing: 12) {
+    private var actionBar: some View {
+        HStack(spacing: 14) {
             Button("全選") { state.selectAllLeftovers(true) }
+                .buttonStyle(QuietButtonStyle())
                 .disabled(state.filteredLeftoverGroups.isEmpty)
             Button("全不選") { state.selectAllLeftovers(false) }
+                .buttonStyle(QuietButtonStyle())
                 .disabled(state.totalSelectedLeftoverCount == 0)
-
             Spacer()
-
-            VStack(alignment: .trailing, spacing: 1) {
-                Text("已選 \(state.totalSelectedLeftoverCount) 項")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(state.formattedTotalSelectedLeftoverSize)
-                    .font(.headline)
-                    .monospacedDigit()
-            }
-
-            Button(role: .destructive) {
+            Text(state.totalSelectedLeftoverCount == 0 ? "尚未勾選項目" : "已勾選 \(state.totalSelectedLeftoverCount) 項，可釋放 \(state.formattedTotalSelectedLeftoverSize)")
+                .font(.system(size: 12))
+                .foregroundStyle(Palette.muted)
+                .monospacedDigit()
+            Button {
                 state.showLeftoverConfirm = true
             } label: {
-                if state.isUninstalling {
-                    ProgressView().controlSize(.small)
-                } else {
-                    Text("移至垃圾桶…")
+                HStack(spacing: 6) {
+                    if state.isUninstalling { ProgressView().controlSize(.small).tint(.white) }
+                    Text("移至垃圾桶")
                 }
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.red)
-            .controlSize(.large)
+            .buttonStyle(SolidButtonStyle(color: Palette.brickFill))
             .disabled(state.totalSelectedLeftoverCount == 0 || state.isUninstalling)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 12)
+        .background(Palette.canvas)
+        .overlay(alignment: .top) { Rectangle().fill(Palette.hairline).frame(height: 0.5) }
     }
 }

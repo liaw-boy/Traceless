@@ -2,10 +2,9 @@ import AppKit
 import CoreGraphics
 import Foundation
 
-// Traceless icon: an app tile lifted up and out of the slot it sat in — the app leaves cleanly,
-// nothing is left behind.
-// Geometric, single-colour foreground so it also reads when macOS swaps the background
-// (dark / tinted icon modes on macOS 26). No gradients, no glow.
+// Traceless icon: an app tile dissolving into ever-smaller squares — it leaves without a trace.
+// Solid shapes only (no gradients, no transparency), so it also reads when macOS swaps the
+// background in dark / tinted icon modes. Geometry is shared with TraceMark in the app (Theme.swift).
 // Usage: swift scripts/generate_icon.swift <output.iconset> [--dark]
 
 let args = CommandLine.arguments
@@ -17,6 +16,42 @@ try fm.createDirectory(atPath: iconsetPath, withIntermediateDirectories: true)
 
 let background = darkPreview ? CGColor(gray: 0.12, alpha: 1) : CGColor(red: 0.11, green: 0.50, blue: 0.40, alpha: 1)  // #1C8066
 let ink = CGColor(red: 1, green: 1, blue: 1, alpha: 1)
+
+/// Unit-square geometry (origin top-left, y down), mirrored by TraceMark.
+struct Dissolve {
+    struct Cell { let x, y, size: CGFloat }
+    static let rows = 4
+    static let cellPitch: CGFloat = 0.16                 // row height and column width
+    static let top: CGFloat = 0.5 - CGFloat(rows) * cellPitch / 2
+    static let solidLeft: CGFloat = 0.04
+    static let solidRight: CGFloat = 0.42
+    static let corner: CGFloat = 0.13
+    /// Columns to the right of the solid block: scale of each cell, nil = gone.
+    static let columns: [[CGFloat?]] = [
+        [0.86, 0.86, 0.86, 0.86],
+        [0.62, nil, 0.62, 0.62],
+        [nil, 0.40, nil, 0.40],
+        [0.22, nil, nil, nil],
+    ]
+    /// Small sizes keep only the nearest fragments so they do not blur into noise.
+    static let smallColumns: [[CGFloat?]] = [
+        [0.8, 0.8, 0.8, 0.8],
+        [0.5, nil, 0.5, nil],
+    ]
+    static func cells(small: Bool) -> [Cell] {
+        var out: [Cell] = []
+        for (c, column) in (small ? smallColumns : columns).enumerated() {
+            let cx = solidRight + 0.02 + cellPitch * (CGFloat(c) + 0.5) + 0.012 * CGFloat(c)
+            for (r, scale) in column.enumerated() {
+                guard let scale else { continue }
+                let size = cellPitch * scale
+                let cy = top + cellPitch * (CGFloat(r) + 0.5)
+                out.append(Cell(x: cx - size / 2, y: cy - size / 2, size: size))
+            }
+        }
+        return out
+    }
+}
 
 func renderIcon(pixelSize: Int) -> Data? {
     let s = CGFloat(pixelSize)
@@ -37,45 +72,34 @@ func renderIcon(pixelSize: Int) -> Data? {
     ctx.fillPath()
     ctx.restoreGState()
 
-    let w = body.width
-    let tile = w * 0.40
-    let corner = tile * 0.24
-    let lift = tile * 0.58
-    // Slot + tile lifted straight up out of it, centred as a group.
-    let groupHeight = tile + lift
-    let slotRect = CGRect(x: body.midX - tile / 2, y: body.midY - groupHeight / 2, width: tile, height: tile)
-    let tileRect = slotRect.offsetBy(dx: 0, dy: lift)
-
-    // The lower part of the slot the app used to occupy.
-    let stroke = w * (pixelSize <= 64 ? 0.05 : 0.032)
-    let slot = slotRect.insetBy(dx: stroke / 2, dy: stroke / 2)
-    let topY = tileRect.minY + tile * 0.12              // rises behind the tile, which sits in front
-    let r = corner - stroke / 2
-    let u = CGMutablePath()
-    u.move(to: CGPoint(x: slot.minX, y: topY))
-    u.addLine(to: CGPoint(x: slot.minX, y: slot.minY + r))
-    u.addArc(center: CGPoint(x: slot.minX + r, y: slot.minY + r), radius: r, startAngle: .pi, endAngle: 1.5 * .pi, clockwise: false)
-    u.addLine(to: CGPoint(x: slot.maxX - r, y: slot.minY))
-    u.addArc(center: CGPoint(x: slot.maxX - r, y: slot.minY + r), radius: r, startAngle: 1.5 * .pi, endAngle: 2 * .pi, clockwise: false)
-    u.addLine(to: CGPoint(x: slot.maxX, y: topY))
-    ctx.saveGState()
-    ctx.setStrokeColor(ink)
-    ctx.setLineWidth(stroke)
-    ctx.setLineCap(.round)
-    ctx.setLineJoin(.round)
-    ctx.addPath(u)
-    ctx.strokePath()
-    ctx.restoreGState()
-
-    // Lifted tile, ringed in the background colour so the U visibly passes behind it.
-    let tilePath = CGPath(roundedRect: tileRect, cornerWidth: corner, cornerHeight: corner, transform: nil)
-    ctx.addPath(tilePath)
-    ctx.setStrokeColor(background)
-    ctx.setLineWidth(stroke * 2.6)
-    ctx.strokePath()
-    ctx.addPath(tilePath)
+    // Mark occupies 62% of the body, centred; convert unit (y-down) to CG (y-up).
+    let m = body.width * 0.62
+    let ox = body.midX - m / 2, oy = body.midY - m / 2
+    func rect(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> CGRect {
+        CGRect(x: ox + x * m, y: oy + (1 - y - h) * m, width: w * m, height: h * m)
+    }
     ctx.setFillColor(ink)
+
+    // Solid part of the tile: rounded on the left, square where it starts to break up.
+    let solid = rect(Dissolve.solidLeft, Dissolve.top, Dissolve.solidRight - Dissolve.solidLeft + 0.002, Dissolve.cellPitch * CGFloat(Dissolve.rows))
+    let r = Dissolve.corner * m
+    let path = CGMutablePath()
+    path.move(to: CGPoint(x: solid.maxX, y: solid.maxY))
+    path.addLine(to: CGPoint(x: solid.minX + r, y: solid.maxY))
+    path.addArc(tangent1End: CGPoint(x: solid.minX, y: solid.maxY), tangent2End: CGPoint(x: solid.minX, y: solid.minY), radius: r)
+    path.addArc(tangent1End: CGPoint(x: solid.minX, y: solid.minY), tangent2End: CGPoint(x: solid.maxX, y: solid.minY), radius: r)
+    path.addLine(to: CGPoint(x: solid.maxX, y: solid.minY))
+    path.closeSubpath()
+    ctx.addPath(path)
     ctx.fillPath()
+
+    // Fragments, each slightly rounded.
+    for cell in Dissolve.cells(small: pixelSize <= 64) {
+        let rr = rect(cell.x, cell.y, cell.size, cell.size)
+        let cr = rr.width * 0.22
+        ctx.addPath(CGPath(roundedRect: rr, cornerWidth: cr, cornerHeight: cr, transform: nil))
+        ctx.fillPath()
+    }
 
     return rep.representation(using: .png, properties: [:])
 }
