@@ -14,6 +14,8 @@ public actor ResidualScanner {
 
         // Helper to safely add an item
         func addItem(url: URL, category: ResidualCategory, isSelected: Bool = true, isProtected: Bool = false) {
+            // An Apple app's own bundle holds no user data, so it may be pre-selected; its data may not.
+            let preselect = isSelected && !isProtected && (!isAppleApp || category == .appBundle)
             let standardized = url.standardizedFileURL
             guard !visitedURLs.contains(standardized) else { return }
             guard fileManager.fileExists(atPath: standardized.path) else { return }
@@ -26,7 +28,7 @@ public actor ResidualScanner {
                 name: standardized.lastPathComponent,
                 size: size,
                 category: category,
-                isSelected: isSelected && !isProtected && !isAppleApp,
+                isSelected: preselect,
                 isProtected: isProtected
             )
             items.append(item)

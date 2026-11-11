@@ -4,17 +4,17 @@ import Combine
 import AppSweepCore
 
 public enum NavigationTab: String, CaseIterable, Identifiable {
-    case apps = "已安裝應用"
-    case dragDrop = "拖曳清理"
-    case leftovers = "孤立殘留清理"
+    case apps = "應用程式"
+    case dragDrop = "拖曳移除"
+    case leftovers = "殘留檔案"
 
     public var id: String { rawValue }
 
     public var icon: String {
         switch self {
-        case .apps: return "app.badge.checkmark"
-        case .dragDrop: return "arrow.down.doc"
-        case .leftovers: return "sparkles"
+        case .apps: return "square.grid.2x2"
+        case .dragDrop: return "square.and.arrow.down"
+        case .leftovers: return "folder.badge.questionmark"
         }
     }
 }
@@ -92,6 +92,8 @@ public final class AppState: ObservableObject {
     @Published public var lastResult: UninstallResult?
     @Published public var showToast: Bool = false
     @Published public var toastMessage: String = ""
+    @Published public var toastIsError: Bool = false
+    @Published public var showLeftoverConfirm: Bool = false
     @Published public var quitAppBeforeTrash: Bool = true
 
     // Services
@@ -208,11 +210,11 @@ public final class AppState: ObservableObject {
     }
 
     public var totalSelectedLeftoverCount: Int {
-        filteredLeftoverGroups.flatMap { $0.items }.filter { $0.isSelected }.count
+        selectedVisibleLeftovers.count
     }
 
     public var totalSelectedLeftoverSize: Int64 {
-        filteredLeftoverGroups.flatMap { $0.items }.filter { $0.isSelected }.reduce(0) { $0 + $1.size }
+        selectedVisibleLeftovers.reduce(0) { $0 + $1.size }
     }
 
     public var formattedTotalSelectedLeftoverSize: String {
@@ -222,23 +224,52 @@ public final class AppState: ObservableObject {
     // MARK: - Actions
 
     public func loadApps() async {
+        guard !isLoadingApps else { return }
         isLoadingApps = true
         self.hasFullDiskAccess = PermissionManager.hasFullDiskAccess
         let apps = await appScanner.scanInstalledApplications()
         self.installedApps = apps
         self.isLoadingApps = false
 
-        if selectedApp == nil, let first = filteredApps.first {
+        if let current = selectedApp, let fresh = apps.first(where: { $0.url == current.url }) {
+            await selectApp(fresh)
+        } else if let first = filteredApps.first {
             await selectApp(first)
+        } else {
+            selectedApp = nil
+            residualItems = []
         }
     }
 
     public func selectApp(_ app: AppInfo) async {
         self.selectedApp = app
+        self.residualItems = []
         self.isLoadingResiduals = true
         let items = await residualScanner.scanResiduals(for: app)
+        // The user may have clicked another app while this scan was running.
+        guard selectedApp?.url == app.url else { return }
         self.residualItems = items
         self.isLoadingResiduals = false
+    }
+
+    /// Re-checks Full Disk Access, e.g. when the user comes back from System Settings.
+    public func refreshPermissions() {
+        hasFullDiskAccess = PermissionManager.hasFullDiskAccess
+    }
+
+    /// Drops the app from the list only if its bundle really left the disk, then moves the selection on.
+    private func afterTrash(app: AppInfo) async {
+        if FileManager.default.fileExists(atPath: app.url.path) {
+            await selectApp(app)
+            return
+        }
+        installedApps.removeAll { $0.url == app.url }
+        if let next = filteredApps.first {
+            await selectApp(next)
+        } else {
+            selectedApp = nil
+            residualItems = []
+        }
     }
 
     public func toggleItemSelection(id: UUID) {
@@ -278,12 +309,25 @@ public final class AppState: ObservableObject {
             self.activeTab = .apps
             await selectApp(app)
         } else {
-            notify("無法辨識此應用程式套件")
+            notify("無法辨識這個應用程式", isError: true)
         }
     }
 
+    public func reportNotAnApp() {
+        notify("只能拖入 .app 應用程式", isError: true)
+    }
+
     public func scanLeftovers() async {
+        guard !isLoadingLeftovers else { return }
         isLoadingLeftovers = true
+        // Orphan detection compares against the installed list; scanning before it exists
+        // would flag every app's data as leftover.
+        while isLoadingApps {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        if installedApps.isEmpty {
+            await loadApps()
+        }
         let groups = await leftoverScanner.scanLeftovers(installedApps: self.installedApps)
         self.leftoverGroups = groups
         self.isLoadingLeftovers = false
@@ -315,115 +359,87 @@ public final class AppState: ObservableObject {
     }
 
     public func executeUninstall() async {
-        guard let app = selectedApp else { return }
-        isUninstalling = true
-        showConfirmSheet = false
-
+        guard let app = selectedApp, !isUninstalling else { return }
         let itemsToTrash = selectedResiduals
+        guard !itemsToTrash.isEmpty else { return }
+        isUninstalling = true
         let result = await uninstaller.uninstall(
             items: itemsToTrash,
             appBundleIdentifier: app.bundleIdentifier,
             quitIfRunning: quitAppBeforeTrash
         )
-
-        self.lastResult = result
-        self.isUninstalling = false
-
-        if result.hasPermissionError {
-            self.showPermissionSheet = true
-            notify("⚠️ 部分沙盒容器因系統權限保護無法移動，請授權完全磁碟取用。")
-            if result.trashedCount > 0 {
-                self.installedApps.removeAll { $0.url == app.url }
-                self.selectedApp = filteredApps.first
-                if let next = selectedApp {
-                    await selectApp(next)
-                }
-            }
-        } else if result.isSuccess || result.trashedCount > 0 {
-            notify("成功移至垃圾桶！釋放了 \(result.formattedFreedBytes)")
-            self.installedApps.removeAll { $0.url == app.url }
-            self.selectedApp = filteredApps.first
-            if let next = selectedApp {
-                await selectApp(next)
-            } else {
-                self.residualItems = []
-            }
-        } else {
-            notify("移除失敗或未選擇任何項目")
+        lastResult = result
+        isUninstalling = false
+        report(result, success: "已將 \(result.trashedCount) 個項目移至垃圾桶，釋放 \(result.formattedFreedBytes)")
+        if result.trashedCount > 0 {
+            await afterTrash(app: app)
         }
     }
 
-    /// Resets the application (removes caches & preferences, but keeps .app bundle)
+    /// Resets the application: trashes its data (preferences, caches, containers) but keeps the .app bundle.
     public func executeResetApp() async {
-        guard let app = selectedApp else { return }
-        showResetConfirmSheet = false
-        isUninstalling = true
-
-        let nonBundleItems = residualItems.filter { $0.category != .appBundle && !$0.isProtected }
+        guard let app = selectedApp, !app.isSystemApp, !isUninstalling else { return }
+        let nonBundleItems = residualItems
+            .filter { $0.category != .appBundle && !$0.isProtected }
+            .map { item -> ResidualItem in var copy = item; copy.isSelected = true; return copy }
         guard !nonBundleItems.isEmpty else {
-            notify("此應用程式無可重置的快取或偏好設定")
-            isUninstalling = false
+            notify("\(app.name) 沒有可重置的資料", isError: true)
             return
         }
-
+        isUninstalling = true
         let result = await uninstaller.uninstall(
             items: nonBundleItems,
             appBundleIdentifier: app.bundleIdentifier,
             quitIfRunning: true
         )
+        lastResult = result
+        isUninstalling = false
+        report(result, success: "已重置 \(app.name)，清除 \(result.formattedFreedBytes)")
+        await selectApp(app)
+    }
 
-        self.isUninstalling = false
-        if result.trashedCount > 0 {
-            notify("成功重置 \(app.name)！已清除 \(result.formattedFreedBytes) 快取設定")
-            await selectApp(app)
-        } else {
-            notify("重置失敗")
-        }
+    /// Selected leftover items in the groups currently visible (filter + search applied).
+    public var selectedVisibleLeftovers: [ResidualItem] {
+        filteredLeftoverGroups.flatMap { $0.items }.filter { $0.isSelected }
     }
 
     public func executeLeftoverGroupUninstall(group: LeftoverAppGroup) async {
         let items = group.items.filter { $0.isSelected }
-        guard !items.isEmpty else {
-            notify("請先勾選欲清理的殘留項目")
-            return
-        }
-
-        let result = await uninstaller.uninstall(items: items, quitIfRunning: false)
-        self.lastResult = result
-        if result.hasPermissionError {
-            self.showPermissionSheet = true
-            notify("⚠️ 清理 \(group.name) 失敗：沙盒容器需要「完全取用磁碟」權限。")
-            if result.trashedCount > 0 {
-                await scanLeftovers()
-            }
-        } else if result.trashedCount > 0 {
-            notify("成功清除 \(group.name) 殘留檔案！釋放了 \(result.formattedFreedBytes)")
-            await scanLeftovers()
-        } else {
-            notify("殘留清理失敗")
-        }
+        await trashLeftovers(items, success: "已清除「\(group.name)」的殘留")
     }
 
     public func executeAllSelectedLeftoversUninstall() async {
-        let allSelected = leftoverGroups.flatMap { $0.items }.filter { $0.isSelected }
-        guard !allSelected.isEmpty else {
-            notify("請先勾選欲清理的殘留項目")
+        await trashLeftovers(selectedVisibleLeftovers, success: "已清除選取的殘留")
+    }
+
+    private func trashLeftovers(_ items: [ResidualItem], success: String) async {
+        guard !isUninstalling else { return }
+        guard !items.isEmpty else {
+            notify("請先勾選要清理的項目", isError: true)
             return
         }
-
-        let result = await uninstaller.uninstall(items: allSelected, quitIfRunning: false)
-        self.lastResult = result
-        if result.hasPermissionError {
-            self.showPermissionSheet = true
-            notify("⚠️ 清理部分項目失敗：沙盒容器需要「完全取用磁碟」權限。")
-            if result.trashedCount > 0 {
-                await scanLeftovers()
-            }
-        } else if result.trashedCount > 0 {
-            notify("成功清除 \(result.trashedCount) 個孤立殘留檔案！釋放了 \(result.formattedFreedBytes)")
+        isUninstalling = true
+        let result = await uninstaller.uninstall(items: items, quitIfRunning: false)
+        lastResult = result
+        isUninstalling = false
+        report(result, success: "\(success)，釋放 \(result.formattedFreedBytes)")
+        if result.trashedCount > 0 {
             await scanLeftovers()
+        }
+    }
+
+    private func report(_ result: UninstallResult, success: String) {
+        if result.hasPermissionError {
+            showPermissionSheet = true
+        }
+        if result.failedCount == 0 && result.trashedCount > 0 {
+            notify(success)
+        } else if result.trashedCount > 0 {
+            notify("\(result.trashedCount) 個項目已移除，\(result.failedCount) 個失敗", isError: true)
+        } else if result.failedCount > 0 {
+            notify(result.errors.first ?? "移除失敗", isError: true)
         } else {
-            notify("殘留清理失敗")
+            notify("所選項目已不存在")
         }
     }
 
@@ -437,13 +453,14 @@ public final class AppState: ObservableObject {
         }
     }
 
-    private func notify(_ msg: String) {
+    private func notify(_ msg: String, isError: Bool = false) {
         self.toastMessage = msg
-        self.showToast = true
+        self.toastIsError = isError
+        withAnimation(.easeOut(duration: 0.2)) { self.showToast = true }
         Task {
             try? await Task.sleep(nanoseconds: 3_500_000_000)
             if self.toastMessage == msg {
-                self.showToast = false
+                withAnimation(.easeIn(duration: 0.2)) { self.showToast = false }
             }
         }
     }

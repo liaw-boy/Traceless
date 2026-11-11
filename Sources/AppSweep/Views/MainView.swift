@@ -5,86 +5,40 @@ import AppSweepCore
 public struct MainView: View {
     @StateObject private var state = AppState()
 
+    private var searchText: Binding<String> {
+        state.activeTab == .leftovers ? $state.leftoverSearchText : $state.searchText
+    }
+
     public var body: some View {
         NavigationSplitView {
-            sidebarContent
-                .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 280)
+            sidebar
+                .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 260)
         } detail: {
-            ZStack {
-                switch state.activeTab {
-                case .apps:
-                    HSplitView {
-                        AppListView(state: state)
-                            .frame(minWidth: 360, idealWidth: 400, maxWidth: 500)
-
-                        AppDetailView(state: state)
-                            .frame(minWidth: 520)
-                    }
-                case .dragDrop:
-                    DragDropView(state: state)
-                case .leftovers:
-                    LeftoverView(state: state)
-                }
-
-                // Toast Notification Overlay
-                if state.showToast {
-                    VStack {
-                        Spacer()
-                        HStack(spacing: 8) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(AppTheme.emerald)
-                            Text(state.toastMessage)
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(.white)
-
-                            Button("開啟垃圾桶") {
-                                state.openTrash()
-                            }
-                            .buttonStyle(.plain)
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(AppTheme.cyan)
-                            .padding(.leading, 4)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(Color(red: 0.15, green: 0.17, blue: 0.24).opacity(0.95))
-                        .clipShape(Capsule())
-                        .overlay(
-                            Capsule()
-                                .stroke(AppTheme.cardBorder, lineWidth: 1)
-                        )
-                        .shadow(color: .black.opacity(0.35), radius: 10, y: 5)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                        .padding(.bottom, 24)
-                    }
-                    .animation(.spring(response: 0.35, dampingFraction: 0.8), value: state.showToast)
-                }
-            }
+            detail
+                .overlay(alignment: .bottom) { toast }
         }
+        .searchable(text: searchText, placement: .toolbar, prompt: state.activeTab == .leftovers ? "搜尋殘留" : "搜尋應用程式")
         .toolbar {
-            ToolbarItem(placement: .automatic) {
-                if state.activeTab == .apps {
-                    Button {
-                        Task {
-                            await state.loadApps()
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "arrow.clockwise")
-                            Text("重新整理")
-                        }
-                        .font(.system(size: 12))
+            ToolbarItem {
+                Button {
+                    Task {
+                        if state.activeTab == .leftovers { await state.scanLeftovers() } else { await state.loadApps() }
                     }
-                    .help("重新掃描已安裝應用程式與磁碟佔用 (Cmd + R)")
-                    .keyboardShortcut("r", modifiers: .command)
+                } label: {
+                    Label("重新掃描", systemImage: "arrow.clockwise")
                 }
+                .help("重新掃描（⌘R）")
+                .keyboardShortcut("r", modifiers: .command)
+                .disabled(state.isLoadingApps || state.isLoadingLeftovers)
             }
         }
-        .sheet(isPresented: $state.showConfirmSheet) {
-            ConfirmDeleteSheet(state: state)
-        }
-        .sheet(isPresented: $state.showResetConfirmSheet) {
-            ResetConfirmSheet(state: state)
+        .background {
+            // ⌘1…⌘3 switch sections, like Finder/Mail sidebars.
+            ForEach(Array(NavigationTab.allCases.enumerated()), id: \.element) { index, tab in
+                Button("") { state.activeTab = tab }
+                    .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+                    .hidden()
+            }
         }
         .sheet(isPresented: $state.showPermissionSheet) {
             PermissionHelpSheet(state: state)
@@ -92,180 +46,105 @@ public struct MainView: View {
         .task {
             await state.loadApps()
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            state.refreshPermissions()
+        }
     }
 
-    private var sidebarContent: some View {
-        VStack(spacing: 0) {
-            // Window Traffic Lights Margin (for borderless window)
-            Color.clear
-                .frame(height: 26)
-
-            // App Branding Header
-            HStack(spacing: 12) {
-                Image(nsImage: NSApp.applicationIconImage)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 36, height: 36)
-                    .shadow(color: .black.opacity(0.4), radius: 4, y: 2)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("AppSweep")
-                        .font(.system(size: 16, weight: .black, design: .rounded))
-                        .foregroundColor(.white)
-
-                    Text("應用程式深度清理工具")
-                        .font(.system(size: 10.5, weight: .medium))
-                        .foregroundColor(.secondary)
-                }
-                Spacer()
+    @ViewBuilder
+    private var detail: some View {
+        switch state.activeTab {
+        case .apps:
+            HSplitView {
+                AppListView(state: state)
+                    .frame(minWidth: 300, idealWidth: 340, maxWidth: 460)
+                AppDetailView(state: state)
+                    .frame(minWidth: 480)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(AppTheme.sidebarBg)
-
-            Divider()
-                .opacity(0.4)
-
-            // Custom Navigation List
-            VStack(spacing: 4) {
-                ForEach(NavigationTab.allCases) { tab in
-                    let isSelected = state.activeTab == tab
-
-                    Button {
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                            state.activeTab = tab
-                        }
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: tab.icon)
-                                .font(.system(size: 13, weight: isSelected ? .bold : .medium))
-                                .foregroundColor(isSelected ? AppTheme.cyan : .secondary)
-                                .frame(width: 20)
-
-                            Text(tab.rawValue)
-                                .font(.system(size: 12.5, weight: isSelected ? .bold : .medium))
-                                .foregroundColor(isSelected ? .white : .secondary)
-
-                            Spacer()
-
-                            if tab == .apps && !state.installedApps.isEmpty {
-                                Text("\(state.installedApps.count)")
-                                    .font(.system(size: 10.5, weight: .bold, design: .monospaced))
-                                    .foregroundColor(isSelected ? .white : .secondary)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(Color.white.opacity(isSelected ? 0.2 : 0.06))
-                                    .clipShape(Capsule())
-                            } else if tab == .leftovers && !state.leftoverGroups.isEmpty {
-                                Text("\(state.leftoverGroups.count)")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(AppTheme.amber)
-                                    .clipShape(Capsule())
-                            }
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(
-                            ZStack(alignment: .leading) {
-                                if isSelected {
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .fill(AppTheme.accent.opacity(0.18))
-                                    Rectangle()
-                                        .fill(AppTheme.cyan)
-                                        .frame(width: 3)
-                                        .clipShape(RoundedRectangle(cornerRadius: 1.5))
-                                }
-                            }
-                        )
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(10)
-
-            Spacer()
-
-            // Permission Warning Card in Sidebar Footer (if Full Disk Access not granted)
-            if !state.hasFullDiskAccess {
-                VStack(alignment: .leading, spacing: 7) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(AppTheme.amber)
-                            .font(.system(size: 11))
-                        Text("權限受限")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.white)
-                        Spacer()
-                        Button {
-                            state.showPermissionSheet = true
-                        } label: {
-                            Image(systemName: "questionmark.circle")
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                        .help("了解權限說明")
-                    }
-
-                    Text("清理 UTM 等沙盒容器需授予「完全取用磁碟」權限。")
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
-                        .lineSpacing(2)
-
-                    Button {
-                        PermissionManager.openFullDiskAccessSettings()
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "lock.open")
-                            Text("前往系統設定授權")
-                        }
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(AppTheme.cyan)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 4.5)
-                        .background(Color.white.opacity(0.08))
-                        .clipShape(RoundedRectangle(cornerRadius: 5))
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(10)
-                .background(AppTheme.amber.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(AppTheme.amber.opacity(0.25), lineWidth: 1)
-                )
-                .padding(.horizontal, 10)
-                .padding(.bottom, 6)
-            }
-
-            Divider()
-                .opacity(0.4)
-
-            // Bottom Utilities
-            HStack {
-                Button {
-                    state.openTrash()
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "trash")
-                            .font(.system(size: 11))
-                        Text("開啟系統垃圾桶")
-                            .font(.system(size: 11, weight: .medium))
-                    }
-                    .foregroundColor(.secondary)
-                    .padding(6)
-                }
-                .buttonStyle(.plain)
-
-                Spacer()
-            }
-            .padding(10)
+            .navigationTitle("應用程式")
+        case .dragDrop:
+            DragDropView(state: state)
+                .navigationTitle("拖曳移除")
+        case .leftovers:
+            LeftoverView(state: state)
+                .navigationTitle("殘留檔案")
         }
-        .background(AppTheme.sidebarBg)
+    }
+
+    private var sidebar: some View {
+        List(selection: Binding(get: { state.activeTab }, set: { if let tab = $0 { state.activeTab = tab } })) {
+            Section {
+                ForEach(NavigationTab.allCases) { tab in
+                    Label(tab.rawValue, systemImage: tab.icon)
+                        .badge(badge(for: tab))
+                        .tag(tab)
+                }
+            }
+        }
+        .listStyle(.sidebar)
+        .safeAreaInset(edge: .bottom) {
+            VStack(alignment: .leading, spacing: 10) {
+                if !state.hasFullDiskAccess {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("權限受限", systemImage: "exclamationmark.triangle.fill")
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(.orange)
+                        Text("沒有「完全取用磁碟」權限時，沙盒容器無法移除。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button("授權…") { state.showPermissionSheet = true }
+                            .controlSize(.small)
+                    }
+                    .padding(10)
+                    .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+                }
+                HStack {
+                    Button {
+                        state.openTrash()
+                    } label: {
+                        Label("垃圾桶", systemImage: "trash")
+                    }
+                    .buttonStyle(.borderless)
+                    Spacer()
+                    Text(AppVersion.display)
+                        .foregroundStyle(.tertiary)
+                }
+                .font(.caption)
+            }
+            .padding(12)
+        }
+    }
+
+    private func badge(for tab: NavigationTab) -> Int {
+        switch tab {
+        case .apps: return state.installedApps.count
+        case .leftovers: return state.leftoverGroups.count
+        case .dragDrop: return 0
+        }
+    }
+
+    @ViewBuilder
+    private var toast: some View {
+        if state.showToast {
+            HStack(spacing: 10) {
+                Image(systemName: state.toastIsError ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+                    .foregroundStyle(state.toastIsError ? .orange : .green)
+                Text(state.toastMessage)
+                    .lineLimit(2)
+                if !state.toastIsError {
+                    Button("打開垃圾桶") { state.openTrash() }
+                        .buttonStyle(.link)
+                }
+            }
+            .font(.callout)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.separator))
+            .padding(.bottom, 70)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .accessibilityElement(children: .combine)
+        }
     }
 }

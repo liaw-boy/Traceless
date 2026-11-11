@@ -95,14 +95,13 @@ public actor AppScanner {
         return results.sorted { $0.size > $1.size }
     }
 
-    /// Spotlight also returns helper apps embedded in other bundles, apps in the Trash,
-    /// on mounted disk images and inside SDKs — none of which the user can uninstall on their own.
-    static func shouldSkipSpotlightPath(_ path: String) -> Bool {
+    /// Spotlight also returns OS components (CoreServices, frameworks, input methods), helpers embedded
+    /// in other bundles or vendor support folders, build products and apps on disk images or in the Trash.
+    /// Only apps the user installed into an Applications folder are uninstall candidates.
+    static func shouldSkipSpotlightPath(_ path: String, home: String = PathUtils.homeDirectory.path) -> Bool {
         let parent = (path as NSString).deletingLastPathComponent
         if parent.contains(".app/") || parent.hasSuffix(".app") { return true }
-        let skippedFragments = ["/.Trash/", "/.Trashes/", "/Developer/Platforms/", "/usr/local/", "/Library/Developer/"]
-        if skippedFragments.contains(where: path.contains) { return true }
-        return path.hasPrefix("/Volumes/") || path.hasPrefix("/private/") || path.hasPrefix("/Library/Apple/")
+        return !(path.hasPrefix("/Applications/") || path.hasPrefix(home + "/Applications/"))
     }
 
     /// Parses an application at a specific file URL.

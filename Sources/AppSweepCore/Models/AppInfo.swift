@@ -53,22 +53,22 @@ public struct AppInfo: Identifiable, Hashable, Sendable {
     }
 
     public var lastUsedDescription: String {
-        guard let date = lastUsedDate else { return "從未開啟" }
-        let now = Date()
-        let interval = now.timeIntervalSince(date)
-        if interval < 0 { return "剛剛" }
-        let days = Int(interval / 86400)
-        if days == 0 { return "今天" }
-        if days == 1 { return "昨天" }
-        if days < 7 { return "\(days) 天前" }
-        if days < 30 { return "\(max(1, days / 7)) 週前" }
-        if days < 365 { return "\(max(1, days / 30)) 個月前" }
-        return "超過 1 年未使用"
+        guard let date = lastUsedDate else { return "沒有開啟紀錄" }
+        let days = Int(Date().timeIntervalSince(date) / 86400)
+        switch days {
+        case ..<1: return "今天開啟過"
+        case 1: return "昨天開啟過"
+        case 2..<7: return "\(days) 天前開啟"
+        case 7..<30: return "\(days / 7) 週前開啟"
+        case 30..<365: return "\(days / 30) 個月前開啟"
+        default: return "超過一年未開啟"
+        }
     }
 
+    /// Never-opened apps count from their install date, so a fresh install is not "unused".
     public var isUnusedOver3Months: Bool {
-        guard let date = lastUsedDate else { return true }
-        return Date().timeIntervalSince(date) > 90 * 86400
+        guard let reference = lastUsedDate ?? installDate ?? lastModified else { return true }
+        return Date().timeIntervalSince(reference) > 90 * 86400
     }
 
     /// Icons are cached per bundle path: SwiftUI re-evaluates rows often and

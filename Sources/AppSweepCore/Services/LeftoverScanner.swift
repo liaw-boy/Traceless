@@ -20,9 +20,9 @@ public enum LeftoverSortOption: String, CaseIterable, Identifiable, Sendable {
 
 public enum LeftoverFilterMode: String, CaseIterable, Identifiable, Sendable {
     case all = "全部"
-    case large = "大檔案 (>50MB)"
-    case containers = "沙盒容器"
-    case caches = "快取檔案"
+    case large = "超過 50 MB"
+    case containers = "容器"
+    case caches = "快取"
     case preferences = "偏好設定"
 
     public var id: String { rawValue }

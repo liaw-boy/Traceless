@@ -1,85 +1,62 @@
 import SwiftUI
 import AppSweepCore
 
+/// Proportional bar of where an app's disk usage lives, with a compact legend.
 public struct StorageBreakdownBar: View {
-    public let items: [ResidualItem]
+    let items: [ResidualItem]
 
-    public init(items: [ResidualItem]) {
-        self.items = items
-    }
-
-    private var totalBytes: Int64 {
-        max(1, items.reduce(0) { $0 + $1.size })
-    }
-
-    private var categorySizes: [(category: ResidualCategory, size: Int64, percentage: Double)] {
-        var dict: [ResidualCategory: Int64] = [:]
-        for item in items {
-            dict[item.category, default: 0] += item.size
-        }
-        let total = Double(totalBytes)
-        return dict.compactMap { cat, size in
-            guard size > 0 else { return nil }
-            return (category: cat, size: size, percentage: Double(size) / total)
-        }.sorted { $0.size > $1.size }
+    private var segments: [(category: ResidualCategory, size: Int64)] {
+        Dictionary(grouping: items, by: \.category)
+            .map { ($0.key, $0.value.reduce(0) { $0 + $1.size }) }
+            .filter { $0.1 > 0 }
+            .sorted { $0.0.sortOrder < $1.0.sortOrder }
     }
 
     public var body: some View {
+        let segments = self.segments
+        let total = max(segments.reduce(0) { $0 + $1.size }, 1)
         VStack(alignment: .leading, spacing: 8) {
-            // Visual Segmented Bar
             GeometryReader { geo in
-                HStack(spacing: 2) {
-                    ForEach(categorySizes, id: \.category) { item in
-                        let width = max(4, geo.size.width * CGFloat(item.percentage))
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(color(for: item.category))
-                            .frame(width: width, height: 8)
-                            .help("\(item.category.displayName): \(FileSizeFormatter.format(item.size)) (\(Int(item.percentage * 100))%)")
+                HStack(spacing: 1) {
+                    ForEach(segments, id: \.category) { seg in
+                        Rectangle()
+                            .fill(seg.category.tint)
+                            .frame(width: max(2, geo.size.width * CGFloat(seg.size) / CGFloat(total)))
+                            .help("\(seg.category.displayName)：\(FileSizeFormatter.format(seg.size))")
                     }
                 }
             }
             .frame(height: 8)
-            .clipShape(RoundedRectangle(cornerRadius: 4))
-            .background(Color.white.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 3))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("儲存空間分布")
+            .accessibilityValue(segments.map { "\($0.category.displayName) \(FileSizeFormatter.format($0.size))" }.joined(separator: "，"))
 
-            // Legend Row
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(categorySizes.prefix(5), id: \.category) { item in
-                        HStack(spacing: 5) {
-                            Circle()
-                                .fill(color(for: item.category))
-                                .frame(width: 6, height: 6)
-                            Text(item.category.displayName)
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary)
-                            Text(FileSizeFormatter.format(item.size))
-                                .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                                .foregroundColor(.primary)
-                        }
-                    }
-                }
-            }
+            FlowLegend(segments: segments)
         }
-        .padding(10)
-        .background(Color.black.opacity(0.2))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(AppTheme.cardBorder, lineWidth: 1)
-        )
+    }
+}
+
+private struct FlowLegend: View {
+    let segments: [(category: ResidualCategory, size: Int64)]
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 14) { entries }
+            VStack(alignment: .leading, spacing: 4) { entries }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
     }
 
-    private func color(for category: ResidualCategory) -> Color {
-        switch category {
-        case .appBundle: return AppTheme.accent
-        case .caches: return AppTheme.cyan
-        case .applicationSupport: return AppTheme.violet
-        case .containers, .groupContainers: return Color.indigo
-        case .preferences: return AppTheme.amber
-        case .savedState: return AppTheme.emerald
-        case .logs: return Color.brown
-        default: return AppTheme.coral
+    @ViewBuilder private var entries: some View {
+        ForEach(segments, id: \.category) { seg in
+            HStack(spacing: 5) {
+                Circle().fill(seg.category.tint).frame(width: 7, height: 7)
+                Text(seg.category.displayName)
+                Text(FileSizeFormatter.format(seg.size)).monospacedDigit()
+            }
+            .fixedSize()
         }
     }
 }

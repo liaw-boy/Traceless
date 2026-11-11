@@ -5,217 +5,109 @@ import AppSweepCore
 public struct AppListView: View {
     @ObservedObject var state: AppState
 
+    private var selection: Binding<AppInfo.ID?> {
+        Binding(
+            get: { state.selectedApp?.id },
+            set: { id in
+                guard let id, id != state.selectedApp?.id,
+                      let app = state.filteredApps.first(where: { $0.id == id }) else { return }
+                Task { await state.selectApp(app) }
+            }
+        )
+    }
+
     public var body: some View {
         VStack(spacing: 0) {
-            // Header Controls
-            VStack(spacing: 10) {
-                // Search Bar
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundColor(AppTheme.accent)
-                        .font(.system(size: 13, weight: .semibold))
+            HStack(spacing: 8) {
+                Picker("篩選", selection: $state.filterMode) {
+                    ForEach(AppFilterMode.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
 
-                    TextField("搜尋應用程式名稱、Bundle ID 或架構...", text: $state.searchText)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 12))
-
-                    if !state.searchText.isEmpty {
-                        Button {
-                            state.searchText = ""
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(.secondary)
-                                .font(.system(size: 12))
-                        }
-                        .buttonStyle(.plain)
+                Menu {
+                    Picker("排序方式", selection: $state.sortOption) {
+                        ForEach(AppSortOption.allCases) { Label($0.rawValue, systemImage: $0.icon).tag($0) }
                     }
+                    .pickerStyle(.inline)
+                } label: {
+                    Image(systemName: "arrow.up.arrow.down")
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .background(Color.black.opacity(0.3))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(AppTheme.cardBorder, lineWidth: 1)
-                )
-
-                // Filter & Sort Row
-                HStack(spacing: 8) {
-                    CustomSegmentedControl(selected: $state.filterMode)
-
-                    Spacer(minLength: 0)
-
-                    CustomSortMenu(currentSort: $state.sortOption)
-                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help("排序：\(state.sortOption.rawValue)")
             }
-            .padding(12)
-            .background(AppTheme.sidebarBg.opacity(0.5))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
 
             Divider()
-                .opacity(0.4)
 
-            // App Cards List
-            if state.isLoadingApps {
-                VStack(spacing: 14) {
-                    ProgressView()
-                    Text("正在載入系統應用程式與中繼資料...")
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if state.isLoadingApps && state.installedApps.isEmpty {
+                ProgressView("正在讀取應用程式…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if state.filteredApps.isEmpty {
-                VStack(spacing: 12) {
-                    Image(systemName: "magnifyingglass.circle")
-                        .font(.system(size: 38))
-                        .foregroundColor(.secondary.opacity(0.6))
-
-                    Text("找不到符合條件的應用程式")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(.secondary)
-
-                    if state.filterMode == .unused {
-                        Text("您所有的第三方應用程式近期皆有開啟記錄")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary.opacity(0.7))
-                    }
+                ContentUnavailableView {
+                    Label("沒有符合的應用程式", systemImage: "magnifyingglass")
+                } description: {
+                    Text(state.filterMode == .unused ? "最近三個月內都有開啟過。" : "試試其他關鍵字或篩選條件。")
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(20)
             } else {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(spacing: 8) {
-                            ForEach(state.filteredApps) { app in
-                                AppCardRow(
-                                    app: app,
-                                    isSelected: state.selectedApp?.id == app.id,
-                                    onSelect: {
-                                        Task {
-                                            await state.selectApp(app)
-                                        }
-                                    }
-                                )
-                                .id(app.id)
-                            }
-                        }
-                        .padding(10)
-                    }
+                let running = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
+                List(state.filteredApps, selection: selection) { app in
+                    AppRow(app: app, isRunning: running.contains(app.bundleIdentifier))
+                        .tag(app.id)
                 }
+                .listStyle(.inset)
             }
+
+            Divider()
+            Text("\(state.filteredApps.count) 個應用程式 · 共 \(FileSizeFormatter.format(state.filteredApps.reduce(0) { $0 + $1.size }))")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 5)
         }
-        .background(AppTheme.canvasBg)
     }
 }
 
-private struct AppCardRow: View {
+private struct AppRow: View {
     let app: AppInfo
-    let isSelected: Bool
-    let onSelect: () -> Void
-
-    @State private var isHovered: Bool = false
+    let isRunning: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
-            // App Icon with subtle elevation
-            Image(nsImage: app.icon(size: 80))
+        HStack(spacing: 10) {
+            Image(nsImage: app.icon())
                 .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 38, height: 38)
-                .shadow(color: .black.opacity(0.35), radius: 3, y: 2)
+                .frame(width: 32, height: 32)
 
-            // Info Stack
-            VStack(alignment: .leading, spacing: 3) {
-                // Name & Badges
-                HStack(spacing: 6) {
-                    Text(app.name)
-                        .font(.system(size: 13, weight: isSelected ? .bold : .semibold))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-
-                    archBadge
-                    if app.isRunning {
-                        StatusBadge(text: "執行中", icon: "bolt.fill", color: AppTheme.emerald)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 5) {
+                    Text(app.name).lineLimit(1)
+                    if isRunning {
+                        Circle().fill(.green).frame(width: 6, height: 6).help("執行中")
                     }
                 }
-
-                // Subtitle Row: Last used & Version
-                HStack(spacing: 6) {
-                    HStack(spacing: 3) {
-                        Image(systemName: "clock")
-                            .font(.system(size: 9))
-                        Text(app.lastUsedDescription)
-                    }
-                    .foregroundColor(app.isUnusedOver3Months ? AppTheme.amber : .secondary)
-
-                    if !app.version.isEmpty {
-                        Text("•")
-                            .foregroundColor(.secondary.opacity(0.4))
-                        Text("v\(app.version)")
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .font(.system(size: 10.5))
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(app.isUnusedOver3Months && !app.isSystemApp ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+                    .lineLimit(1)
             }
 
-            Spacer(minLength: 4)
+            Spacer(minLength: 6)
 
-            // Size Pill
             Text(app.formattedSize)
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                .foregroundColor(isSelected ? .white : .secondary)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3.5)
-                .background(isSelected ? AppTheme.accent.opacity(0.6) : Color.white.opacity(0.06))
-                .clipShape(Capsule())
+                .font(.callout)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 9))
-        .overlay(
-            RoundedRectangle(cornerRadius: 9)
-                .stroke(cardBorder, lineWidth: isSelected ? 1.5 : 1)
-        )
-        .contentShape(Rectangle())
-        .onTapGesture {
-            onSelect()
-        }
-        .onHover { isHovered = $0 }
+        .padding(.vertical, 3)
+        .accessibilityElement(children: .combine)
     }
 
-    private var archBadge: some View {
-        Group {
-            if app.architecture.contains("Apple Silicon") {
-                StatusBadge(text: "Apple Silicon", color: AppTheme.cyan)
-            } else if app.architecture.contains("Intel") {
-                StatusBadge(text: "Intel", color: AppTheme.amber)
-            }
-        }
-    }
-
-    private var cardBackground: some View {
-        ZStack(alignment: .leading) {
-            if isSelected {
-                LinearGradient(
-                    colors: [AppTheme.accent.opacity(0.22), AppTheme.cardBg],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-                // Left glowing indicator bar
-                Rectangle()
-                    .fill(AppTheme.cyan)
-                    .frame(width: 3.5)
-                    .clipShape(RoundedRectangle(cornerRadius: 2))
-            } else {
-                (isHovered ? AppTheme.cardBg.opacity(0.9) : AppTheme.cardBg.opacity(0.6))
-            }
-        }
-    }
-
-    private var cardBorder: Color {
-        if isSelected {
-            return AppTheme.accent.opacity(0.7)
-        }
-        return isHovered ? Color.white.opacity(0.18) : AppTheme.cardBorder
+    private var subtitle: String {
+        var parts = [app.lastUsedDescription]
+        if app.architecture == "Intel" { parts.append("Intel") }
+        if !app.version.isEmpty { parts.append(app.version) }
+        return parts.joined(separator: " · ")
     }
 }

@@ -3,7 +3,10 @@
 set -e
 cd "$(dirname "$0")"
 
-echo "🔨 Building release binary..."
+VERSION=$(tr -d '[:space:]' < VERSION)
+BUILD=$(git rev-list --count HEAD 2>/dev/null || echo 1)
+
+echo "🔨 Building release binary (v$VERSION, build $BUILD)..."
 swift build -c release
 
 APP=AppSweep.app
@@ -29,12 +32,13 @@ cat > "$APP/Contents/Info.plist" <<EOF
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundleIconName</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>1.0.0</string>
-  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleShortVersionString</key><string>$VERSION</string>
+  <key>CFBundleVersion</key><string>$BUILD</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSPrincipalClass</key><string>NSApplication</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSSupportsAutomaticGraphicsSwitching</key><true/>
+  <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
 </dict></plist>
 EOF
 

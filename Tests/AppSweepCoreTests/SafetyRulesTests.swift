@@ -101,12 +101,27 @@ final class SafetyRulesTests: XCTestCase {
         XCTAssertFalse(ResidualScanner.groupContainerMatches("group.com.example.app", bundleId: ""))
     }
 
+    func testUnusedUsesInstallDateWhenNeverOpened() {
+        let url = URL(fileURLWithPath: "/Applications/Example.app")
+        let fresh = AppInfo(name: "Fresh", bundleIdentifier: "com.example.fresh", url: url, version: "1", installDate: Date())
+        let old = AppInfo(name: "Old", bundleIdentifier: "com.example.old", url: url, version: "1", installDate: Date(timeIntervalSinceNow: -200 * 86400))
+        let usedRecently = AppInfo(name: "Used", bundleIdentifier: "com.example.used", url: url, version: "1",
+                                   installDate: Date(timeIntervalSinceNow: -400 * 86400), lastUsedDate: Date(timeIntervalSinceNow: -86400))
+        XCTAssertFalse(fresh.isUnusedOver3Months)
+        XCTAssertTrue(old.isUnusedOver3Months)
+        XCTAssertFalse(usedRecently.isUnusedOver3Months)
+    }
+
     func testSpotlightPathFilter() {
         XCTAssertFalse(AppScanner.shouldSkipSpotlightPath("/Applications/Example.app"))
         XCTAssertFalse(AppScanner.shouldSkipSpotlightPath("/Applications/Vendor/Example.app"))
         XCTAssertTrue(AppScanner.shouldSkipSpotlightPath("/Applications/Example.app/Contents/Frameworks/Helper.app"))
         XCTAssertTrue(AppScanner.shouldSkipSpotlightPath("/Volumes/Example Installer/Example.app"))
-        XCTAssertTrue(AppScanner.shouldSkipSpotlightPath("/Users/someone/.Trash/Old.app"))
+        XCTAssertTrue(AppScanner.shouldSkipSpotlightPath("/Users/someone/.Trash/Old.app", home: "/Users/someone"))
+        XCTAssertFalse(AppScanner.shouldSkipSpotlightPath("/Users/someone/Applications/Tool.app", home: "/Users/someone"))
+        XCTAssertTrue(AppScanner.shouldSkipSpotlightPath("/System/Library/CoreServices/Internal.app"))
+        XCTAssertTrue(AppScanner.shouldSkipSpotlightPath("/Library/Application Support/Vendor/Helper.app"))
+        XCTAssertTrue(AppScanner.shouldSkipSpotlightPath("/Users/someone/code/build/Debug/My.app", home: "/Users/someone"))
     }
 }
 

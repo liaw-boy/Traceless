@@ -45,24 +45,17 @@ public enum PathUtils {
             return (attrs?[.size] as? Int64) ?? 0
         }
 
-        guard let enumerator = fileManager.enumerator(
-            at: url,
-            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
-            options: [.skipsPackageDescendants]
-        ) else {
+        // Count everything inside, nested bundles included (apps embed .app/.xpc/.framework packages),
+        // using allocated size so totals match Finder.
+        let keys: Set<URLResourceKey> = [.isRegularFileKey, .totalFileAllocatedSizeKey, .fileSizeKey]
+        guard let enumerator = fileManager.enumerator(at: url, includingPropertiesForKeys: Array(keys), options: []) else {
             return 0
         }
 
         var totalSize: Int64 = 0
         for case let fileURL as URL in enumerator {
-            do {
-                let resourceValues = try fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
-                if resourceValues.isRegularFile == true {
-                    totalSize += Int64(resourceValues.fileSize ?? 0)
-                }
-            } catch {
-                continue
-            }
+            guard let values = try? fileURL.resourceValues(forKeys: keys), values.isRegularFile == true else { continue }
+            totalSize += Int64(values.totalFileAllocatedSize ?? values.fileSize ?? 0)
         }
 
         return totalSize
