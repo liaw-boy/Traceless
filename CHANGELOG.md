@@ -27,6 +27,11 @@
 - App 大小包含內嵌的套件，列表與明細數字一致。
 
 ### 新增
+- 系統深度檢查（殘留檔案頁）：
+  - 以開發者簽章 Team ID 與廠商識別碼判斷，找出 App 已移除但仍留在系統的核心延伸功能（`/Library/Extensions`）、共用框架（`/Library/Frameworks`）與音訊驅動，可移至垃圾桶；kext 需重新開機後才完全卸載。
+  - 列出孤立的系統延伸功能（DriverKit、網路延伸等），提供直達「登入項目與延伸功能」的按鈕（macOS 不允許其他 App 直接移除）。
+  - 找出所屬 App 已移除但仍在執行的背景程式（狀態列殘留圖示的常見來源），可一鍵結束。
+  - 移除單一 App 時，同一廠商且同一 Team ID 簽署的框架與 kext 會一併列出並預先勾選。
 - 偵測虛擬音訊裝置驅動（`/Library/Audio/Plug-Ins/HAL`）：移除 App 時一併找出它的驅動；App 已刪而驅動還在時列為殘留。移除後自動重啟 coreaudiod，聲音選單中的裝置立即消失，不必重開機。
 - 系統層項目若與 App 由同一開發者團隊（程式碼簽章 Team ID）簽署，視為同一廠商並預先勾選。
 - 掃描 Application Scripts、Cookies、`/Library` 下的 Application Support／Caches／Logs、LaunchAgents／LaunchDaemons、PrivilegedHelperTools。

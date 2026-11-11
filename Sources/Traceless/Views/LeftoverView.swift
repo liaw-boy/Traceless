@@ -63,7 +63,7 @@ public struct LeftoverView: View {
                         .foregroundStyle(Palette.muted)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if state.filteredLeftoverGroups.isEmpty {
+            } else if state.filteredLeftoverGroups.isEmpty && state.inspection.isEmpty {
                 EmptyStateView(
                     title: state.leftoverGroups.isEmpty ? "沒有殘留檔案" : "沒有符合的項目",
                     message: "仍安裝中、正在執行或最近 30 天有使用的資料不會出現在這裡。",
@@ -74,6 +74,7 @@ public struct LeftoverView: View {
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 10) {
+                        systemSection
                         ForEach(state.filteredLeftoverGroups) { group in
                             groupBlock(group)
                         }
@@ -102,6 +103,72 @@ public struct LeftoverView: View {
                 await state.scanLeftovers()
             }
         }
+    }
+
+    // MARK: Background & system items
+
+    /// Things macOS will not let another app delete: still-running helpers, system extensions and
+    /// login/background items. Each row says what it is and offers the one action that works.
+    private var systemSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("背景與系統項目")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Palette.ink)
+                Spacer()
+                Text("狀態列殘留圖示多半來自這裡")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Palette.muted)
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 10)
+            .padding(.bottom, 6)
+
+            ForEach(state.inspection.ghostProcesses) { ghost in
+                systemRow(icon: "bolt.horizontal.circle", title: "\(ghost.name) 仍在執行",
+                          detail: "所屬 App 已移除。\(PathUtils.abbreviatingWithTilde(url: URL(fileURLWithPath: ghost.path)))") {
+                    Button("結束") { Task { await state.quitGhost(ghost) } }
+                        .buttonStyle(QuietButtonStyle())
+                }
+            }
+            ForEach(state.inspection.orphanedExtensions) { ext in
+                systemRow(icon: "puzzlepiece.extension", title: ext.name,
+                          detail: "系統延伸功能，所屬 App 已移除（\(ext.id)）。macOS 只允許在系統設定中停用。") {
+                    Button("開啟設定") { PermissionManager.openLoginItemsSettings() }
+                        .buttonStyle(QuietButtonStyle())
+                }
+            }
+            systemRow(icon: "person.badge.clock", title: "登入項目與背景項目",
+                      detail: "已移除 App 留下的開機啟動登記，只能在系統設定中關閉。") {
+                Button("開啟設定") { PermissionManager.openLoginItemsSettings() }
+                    .buttonStyle(QuietButtonStyle())
+            }
+            .padding(.bottom, 4)
+        }
+        .background(Palette.canvas.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func systemRow<Action: View>(icon: String, title: String, detail: String, @ViewBuilder action: () -> Action) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 15))
+                .foregroundStyle(Palette.muted)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Palette.ink)
+                Text(detail)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Palette.muted)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 8)
+            action()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .accessibilityElement(children: .combine)
     }
 
     private func groupBlock(_ group: LeftoverAppGroup) -> some View {

@@ -96,7 +96,7 @@ public enum PathUtils {
 
         // 2. Never inside OS-owned trees.
         let systemTrees = ["/system", "/usr", "/bin", "/sbin", "/etc", "/private", "/var",
-                           "/library/apple", "/library/preferences", "/library/extensions",
+                           "/library/apple", "/library/preferences",
                            "/library/systemextensions", "/library/security", "/library/keychains"]
         if systemTrees.contains(where: within) { return false }
 
@@ -128,6 +128,11 @@ public enum PathUtils {
                                    "/library/launchagents", "/library/launchdaemons",
                                    "/library/privilegedhelpertools", "/library/audio/plug-ins/hal"]
         if sharedResidualRoots.contains(where: strictlyWithin) { return true }
+
+        // Kernel extensions and shared frameworks: only a bundle directly inside the folder.
+        for (root, ext) in [("/library/extensions", ".kext"), ("/library/frameworks", ".framework")] where strictlyWithin(root) {
+            return p.hasSuffix(ext) && !p.dropFirst(root.count + 1).contains("/")
+        }
 
         // App bundles: only in the standard application folders.
         for root in ["/applications", home + "/applications"] where p.hasSuffix(".app") && strictlyWithin(root) {

@@ -236,3 +236,59 @@ final class AudioDriverTests: XCTestCase {
         XCTAssertFalse(Uninstaller.privilegedMoveScript([pair]).contains("killall"))
     }
 }
+
+final class SystemInspectionTests: XCTestCase {
+    func testParseSystemExtensions() {
+        let sample = """
+        2 extension(s)
+        --- com.apple.system_extension.driver_extension (Go to 'System Settings')
+        enabled\tactive\tteamID\tbundleID (version)\tname\t[state]
+        \t*\tABCDE12345\tcom.example.driver (1.0/1)\tExample Driver\t[activated waiting for user]
+        *\t*\tFGHIJ67890\tcom.other.net-ext (2.0/2)\tOther Net\t[activated enabled]
+        """
+        let parsed = SystemInspector.parseSystemExtensions(sample)
+        XCTAssertEqual(parsed.count, 2)
+        XCTAssertEqual(parsed[0].id, "com.example.driver")
+        XCTAssertEqual(parsed[0].teamID, "ABCDE12345")
+        XCTAssertEqual(parsed[0].state, "activated waiting for user")
+        XCTAssertFalse(parsed[0].isEnabled)
+        XCTAssertTrue(parsed[1].isEnabled)
+    }
+
+    func testVendorOrphanRules() {
+        XCTAssertEqual(CodeSignature.vendorPrefix("com.example.mouse.driver"), "com.example")
+        XCTAssertNil(CodeSignature.vendorPrefix("com.example"))
+        // No installed app from the vendor and no matching team → orphan.
+        XCTAssertTrue(CodeSignature.isOrphanedVendorBundle(bundleId: "com.example.hid", teamID: "T1",
+                                                           installedBundleIds: ["com.other.app"], installedTeams: ["T2"]))
+        // Same team still installed → kept.
+        XCTAssertFalse(CodeSignature.isOrphanedVendorBundle(bundleId: "com.example.hid", teamID: "T2",
+                                                            installedBundleIds: ["com.other.app"], installedTeams: ["T2"]))
+        // Same vendor prefix still installed → kept.
+        XCTAssertFalse(CodeSignature.isOrphanedVendorBundle(bundleId: "com.example.hid", teamID: nil,
+                                                            installedBundleIds: ["com.example.app"], installedTeams: []))
+        // Apple is never orphaned.
+        XCTAssertFalse(CodeSignature.isOrphanedVendorBundle(bundleId: "com.apple.driver.x", teamID: nil,
+                                                            installedBundleIds: [], installedTeams: []))
+    }
+
+    func testGhostRule() {
+        let home = "/Users/someone"
+        XCTAssertTrue(SystemInspector.isGhost(path: "/Applications/Gone.app", bundleGone: true, ownerGone: false, home: home))
+        XCTAssertTrue(SystemInspector.isGhost(path: "/Library/Application Support/Vendor/Helper.app", bundleGone: false, ownerGone: true, home: home))
+        XCTAssertTrue(SystemInspector.isGhost(path: home + "/Library/Application Support/Vendor/Menu.app", bundleGone: false, ownerGone: true, home: home))
+        // Apps run from a project or Downloads folder are deliberate.
+        XCTAssertFalse(SystemInspector.isGhost(path: home + "/code/build/My.app", bundleGone: false, ownerGone: true, home: home))
+        // Helper whose vendor still has an installed app.
+        XCTAssertFalse(SystemInspector.isGhost(path: "/Library/Application Support/Vendor/Helper.app", bundleGone: false, ownerGone: false, home: home))
+    }
+
+    func testKextAndFrameworkPaths() {
+        XCTAssertTrue(PathUtils.isSafeToDelete(url: URL(fileURLWithPath: "/Library/Extensions/ExampleHid.kext")))
+        XCTAssertTrue(PathUtils.isSafeToDelete(url: URL(fileURLWithPath: "/Library/Frameworks/ExampleSDK.framework")))
+        XCTAssertFalse(PathUtils.isSafeToDelete(url: URL(fileURLWithPath: "/Library/Extensions")))
+        XCTAssertFalse(PathUtils.isSafeToDelete(url: URL(fileURLWithPath: "/Library/Extensions/A.kext/Contents/Info.plist")))
+        XCTAssertFalse(PathUtils.isSafeToDelete(url: URL(fileURLWithPath: "/Library/Frameworks/notes.txt")))
+        XCTAssertFalse(PathUtils.isSafeToDelete(url: URL(fileURLWithPath: "/Library/SystemExtensions/X/com.example.dext")))
+    }
+}

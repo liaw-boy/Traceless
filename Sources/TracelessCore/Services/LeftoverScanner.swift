@@ -306,19 +306,27 @@ public actor LeftoverScanner {
             }
         }
 
-        // 6. Virtual audio drivers whose app is gone (they linger in the Sound menu).
-        for halDir in [URL(fileURLWithPath: "/Library/Audio/Plug-Ins/HAL"), userLib.appendingPathComponent("Audio/Plug-Ins/HAL")] {
-            guard let drivers = try? fileManager.contentsOfDirectory(at: halDir, includingPropertiesForKeys: nil) else { continue }
-            for driver in drivers where driver.pathExtension == "driver" {
-                let driverId = Bundle(url: driver)?.bundleIdentifier ?? ""
-                let name = driver.deletingPathExtension().lastPathComponent
-                guard !driverId.isEmpty, !driverId.lowercased().hasPrefix("com.apple.") else { continue }
-                let owned = installedApps.contains {
-                    ResidualScanner.audioDriverBelongs(driverId: driverId, driverName: name, bundleId: $0.bundleIdentifier, appName: $0.name)
-                }
-                if !owned {
-                    registerOrphan(groupKey: driverId, displayName: name, url: driver, category: .audioPlugins)
-                }
+        // 6. System-level bundles whose vendor has no installed app left: virtual audio drivers (they
+        //    linger in the Sound menu), kernel extensions and shared frameworks. Judged by vendor prefix
+        //    and code-signing Team ID rather than by name.
+        let installedTeams = CodeSignature.installedTeamIDs(installedApps.filter { !$0.isSystemApp })
+        let installedBundleIds = installedApps.map(\.bundleIdentifier)
+        let systemBundles: [(dir: URL, ext: String, category: ResidualCategory)] = [
+            (URL(fileURLWithPath: "/Library/Audio/Plug-Ins/HAL"), "driver", .audioPlugins),
+            (userLib.appendingPathComponent("Audio/Plug-Ins/HAL"), "driver", .audioPlugins),
+            (URL(fileURLWithPath: "/Library/Extensions"), "kext", .kernelExtensions),
+            (URL(fileURLWithPath: "/Library/Frameworks"), "framework", .frameworks),
+        ]
+        for (dir, ext, category) in systemBundles {
+            guard let bundles = try? fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { continue }
+            for url in bundles where url.pathExtension == ext {
+                guard let id = Bundle(url: url)?.bundleIdentifier,
+                      CodeSignature.isOrphanedVendorBundle(bundleId: id, teamID: CodeSignature.teamID(of: url),
+                                                           installedBundleIds: installedBundleIds, installedTeams: installedTeams),
+                      let vendor = CodeSignature.vendorPrefix(id) else { continue }
+                // Group by vendor so all of one company's leftovers sit together.
+                let vendorName = vendor.split(separator: ".").last.map { String($0).capitalized } ?? vendor
+                registerOrphan(groupKey: "vendor:" + vendor, displayName: "\(vendorName)（系統元件）", url: url, category: category)
             }
         }
 

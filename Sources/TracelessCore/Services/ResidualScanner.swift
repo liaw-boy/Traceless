@@ -225,6 +225,18 @@ public actor ResidualScanner {
             }
         }
 
+        // 15. Shared frameworks and kernel extensions: only with proof (same vendor prefix AND same Team ID).
+        if let vendor = CodeSignature.vendorPrefix(bundleId), let appTeamID {
+            for (dir, ext, category) in [("/Library/Frameworks", "framework", ResidualCategory.frameworks),
+                                         ("/Library/Extensions", "kext", ResidualCategory.kernelExtensions)] {
+                for url in scanMatchingFiles(in: URL(fileURLWithPath: dir), category: category, predicate: { $0.hasSuffix("." + ext) }) {
+                    guard let id = Bundle(url: url)?.bundleIdentifier, CodeSignature.vendorPrefix(id) == vendor,
+                          CodeSignature.teamID(of: url) == appTeamID else { continue }
+                    addItem(url: url, category: category)
+                }
+            }
+        }
+
         // Sort: by category order first, then by size descending
         return items.sorted { lhs, rhs in
             if lhs.category.sortOrder != rhs.category.sortOrder {

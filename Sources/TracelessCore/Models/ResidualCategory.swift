@@ -11,6 +11,8 @@ public enum ResidualCategory: String, CaseIterable, Identifiable, Sendable {
     case logs
     case launchAgents
     case audioPlugins
+    case kernelExtensions
+    case frameworks
     case webData
     case other
 
@@ -38,6 +40,10 @@ public enum ResidualCategory: String, CaseIterable, Identifiable, Sendable {
             return "背景排程與啟動項目"
         case .audioPlugins:
             return "虛擬音訊裝置"
+        case .kernelExtensions:
+            return "核心延伸功能 (kext)"
+        case .frameworks:
+            return "共用框架"
         case .webData:
             return "網頁資料與 Cookies"
         case .other:
@@ -67,6 +73,10 @@ public enum ResidualCategory: String, CaseIterable, Identifiable, Sendable {
             return "paperplane"
         case .audioPlugins:
             return "speaker.wave.2"
+        case .kernelExtensions:
+            return "cpu"
+        case .frameworks:
+            return "square.stack.3d.up"
         case .webData:
             return "network"
         case .other:
@@ -87,7 +97,9 @@ public enum ResidualCategory: String, CaseIterable, Identifiable, Sendable {
         case .logs: return 8
         case .launchAgents: return 9
         case .audioPlugins: return 10
-        case .other: return 11
+        case .kernelExtensions: return 11
+        case .frameworks: return 12
+        case .other: return 13
         }
     }
 }

@@ -57,6 +57,8 @@ extension ResidualCategory {
         case .logs: return Palette.dynamic(light: 0x8C7B6B, dark: 0xB2A291)
         case .launchAgents: return Palette.dynamic(light: 0x9A4F3C, dark: 0xC27762)
         case .audioPlugins: return Palette.dynamic(light: 0x3F7F8C, dark: 0x6FB0BD)
+        case .kernelExtensions: return Palette.dynamic(light: 0x7A5C8E, dark: 0xA88BBC)
+        case .frameworks: return Palette.dynamic(light: 0x5C6B7A, dark: 0x8C9BAA)
         case .other: return Palette.muted
         }
     }

@@ -8,6 +8,8 @@ public struct UninstallResult: Sendable {
     public let errors: [String]
     public let hasPermissionError: Bool
     public let failedItems: [ResidualItem]
+    /// A kernel extension was removed; it stays loaded until the Mac restarts.
+    public var needsRestart = false
 
     public init(
         trashedCount: Int,
@@ -162,7 +164,7 @@ public actor Uninstaller {
             }
         }
 
-        return UninstallResult(
+        var result = UninstallResult(
             trashedCount: trashedCount,
             failedCount: failedCount,
             freedBytes: freedBytes,
@@ -170,6 +172,10 @@ public actor Uninstaller {
             hasPermissionError: hasPermissionError,
             failedItems: failedItems
         )
+        result.needsRestart = itemsToTrash.contains {
+            $0.category == .kernelExtensions && !fileManager.fileExists(atPath: $0.url.path)
+        }
+        return result
     }
 
     private func isSymlink(_ url: URL) -> Bool {

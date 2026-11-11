@@ -77,6 +77,7 @@ public final class AppState: ObservableObject {
     @Published public var leftoverSearchText: String = ""
     @Published public var leftoverFilterMode: LeftoverFilterMode = .all
     @Published public var leftoverSortOption: LeftoverSortOption = .sizeDesc
+    @Published public var inspection = InspectionReport()
 
     // Search & Filter (Apps)
     @Published public var searchText: String = ""
@@ -101,6 +102,7 @@ public final class AppState: ObservableObject {
     private let residualScanner = ResidualScanner()
     private let leftoverScanner = LeftoverScanner()
     private let uninstaller = Uninstaller()
+    private let systemInspector = SystemInspector()
 
     public init() {}
 
@@ -328,8 +330,10 @@ public final class AppState: ObservableObject {
         if installedApps.isEmpty {
             await loadApps()
         }
-        let groups = await leftoverScanner.scanLeftovers(installedApps: self.installedApps)
-        self.leftoverGroups = groups
+        async let groups = leftoverScanner.scanLeftovers(installedApps: self.installedApps)
+        async let report = systemInspector.inspect(installedApps: self.installedApps)
+        self.leftoverGroups = await groups
+        self.inspection = await report
         self.isLoadingLeftovers = false
     }
 
@@ -433,7 +437,9 @@ public final class AppState: ObservableObject {
         if result.hasPermissionError {
             showPermissionSheet = true
         }
-        if result.failedCount == 0 && result.trashedCount > 0 {
+        if result.needsRestart && result.trashedCount > 0 {
+            notify("\(success)。核心延伸功能要重新開機後才會完全卸載")
+        } else if result.failedCount == 0 && result.trashedCount > 0 {
             notify(success)
         } else if result.trashedCount > 0 {
             notify("\(result.trashedCount) 個項目已移除，\(result.failedCount) 個失敗", isError: true)
@@ -442,6 +448,21 @@ public final class AppState: ObservableObject {
         } else {
             notify("所選項目已不存在")
         }
+    }
+
+    /// Quits a process left behind by a removed app (e.g. a menu bar helper).
+    public func quitGhost(_ ghost: GhostProcess) async {
+        guard let app = NSRunningApplication(processIdentifier: ghost.id) else {
+            inspection.ghostProcesses.removeAll { $0.id == ghost.id }
+            return
+        }
+        app.terminate()
+        for _ in 0..<20 where !app.isTerminated {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        if !app.isTerminated { app.forceTerminate() }
+        inspection.ghostProcesses.removeAll { $0.id == ghost.id }
+        notify("已結束「\(ghost.name)」")
     }
 
     public func revealInFinder(url: URL) {

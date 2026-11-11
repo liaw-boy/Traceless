@@ -25,6 +25,14 @@ public enum PermissionManager {
         return false
     }
 
+    /// Opens System Settings › General › Login Items & Extensions, where background items and
+    /// system extensions are switched off (macOS does not let other apps remove them).
+    public static func openLoginItemsSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
     /// Opens macOS System Settings directly to Privacy & Security > Full Disk Access.
     public static func openFullDiskAccessSettings() {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
