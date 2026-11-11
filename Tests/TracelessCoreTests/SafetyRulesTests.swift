@@ -292,3 +292,21 @@ final class SystemInspectionTests: XCTestCase {
         XCTAssertFalse(PathUtils.isSafeToDelete(url: URL(fileURLWithPath: "/Library/SystemExtensions/X/com.example.dext")))
     }
 }
+
+final class SiblingAppTests: XCTestCase {
+    func testSiblingAppFilesAreSkipped() {
+        let installed: Set<String> = ["com.example.browser", "com.example.browser.canary"]
+        let id = "com.example.browser"
+        // Files of the installed Canary build are not ours.
+        XCTAssertTrue(ResidualScanner.belongsToSibling("com.example.browser.canary.plist", bundleId: id, installedBundleIds: installed))
+        XCTAssertTrue(ResidualScanner.belongsToSibling("com.example.browser.canary", bundleId: id, installedBundleIds: installed))
+        XCTAssertTrue(ResidualScanner.belongsToSibling("TEAM123.com.example.browser.canary", bundleId: id, installedBundleIds: installed))
+        // Our own files, and a dotted child of ours that no installed app claims, stay.
+        XCTAssertFalse(ResidualScanner.belongsToSibling("com.example.browser.plist", bundleId: id, installedBundleIds: installed))
+        XCTAssertFalse(ResidualScanner.belongsToSibling("com.example.browser.helper.plist", bundleId: id, installedBundleIds: installed))
+        // "canaryx" is not on a dot boundary.
+        XCTAssertFalse(ResidualScanner.belongsToSibling("com.example.browser.canaryx", bundleId: id, installedBundleIds: installed))
+        // Uninstalling the Canary build is unaffected by the main app being installed.
+        XCTAssertFalse(ResidualScanner.belongsToSibling("com.example.browser.canary.plist", bundleId: "com.example.browser.canary", installedBundleIds: installed))
+    }
+}

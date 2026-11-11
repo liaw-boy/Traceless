@@ -6,7 +6,9 @@ public actor ResidualScanner {
     public init() {}
 
     /// Scans for all residual files and directories associated with the given application.
-    public func scanResiduals(for app: AppInfo) async -> [ResidualItem] {
+    /// `installedBundleIds` lets us skip files of a still-installed sibling app
+    /// (removing com.google.Chrome must not take com.google.Chrome.canary's data).
+    public func scanResiduals(for app: AppInfo, installedBundleIds: Set<String> = []) async -> [ResidualItem] {
         var items: [ResidualItem] = []
         var visitedURLs: Set<URL> = []
         let appTeamID = CodeSignature.teamID(of: app.url)
@@ -23,6 +25,8 @@ public actor ResidualScanner {
             let provenSameVendor = isSystemWide && appTeamID != nil && CodeSignature.teamID(of: url) == appTeamID
             let preselect = isSelected && !isProtected && (!isSystemWide || provenSameVendor) && (!isAppleApp || category == .appBundle)
             let standardized = url.standardizedFileURL
+            guard category == .appBundle || !Self.belongsToSibling(standardized.lastPathComponent, bundleId: app.bundleIdentifier,
+                                                                   installedBundleIds: installedBundleIds) else { return }
             guard !visitedURLs.contains(standardized) else { return }
             guard fileManager.fileExists(atPath: standardized.path) else { return }
             guard PathUtils.isSafeToDelete(url: standardized) else { return }
@@ -252,6 +256,17 @@ public actor ResidualScanner {
         let name = "." + filename.lowercased() + "."
         let id = bundleId.lowercased()
         return !id.isEmpty && name.contains("." + id + ".")
+    }
+
+    /// True when `filename` is named after an installed app whose id extends `bundleId` on a dot boundary.
+    static func belongsToSibling(_ filename: String, bundleId: String, installedBundleIds: Set<String>) -> Bool {
+        let id = bundleId.lowercased()
+        guard !id.isEmpty else { return false }
+        let name = "." + filename.lowercased() + "."
+        return installedBundleIds.contains { other in
+            let o = other.lowercased()
+            return o.hasPrefix(id + ".") && name.contains("." + o + ".")
+        }
     }
 
     /// At least two non-empty dot-separated parts with a reasonably long overall id ("com.vendor", "md.obsidian").

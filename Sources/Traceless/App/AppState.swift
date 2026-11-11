@@ -254,7 +254,7 @@ public final class AppState: ObservableObject {
         self.selectedApp = app
         self.residualItems = []
         self.isLoadingResiduals = true
-        let items = await residualScanner.scanResiduals(for: app)
+        let items = await residualScanner.scanResiduals(for: app, installedBundleIds: Set(installedApps.map(\.bundleIdentifier)))
         // The user may have clicked another app while this scan was running.
         guard selectedApp?.url == app.url else { return }
         self.residualItems = items
@@ -273,6 +273,8 @@ public final class AppState: ObservableObject {
             return
         }
         installedApps.removeAll { $0.url == app.url }
+        // The user may have moved on to another app while this one was being removed.
+        guard selectedApp?.url == app.url else { return }
         if let next = filteredApps.first {
             await selectApp(next)
         } else {
@@ -314,9 +316,11 @@ public final class AppState: ObservableObject {
             if !installedApps.contains(where: { $0.url == app.url }) {
                 installedApps.insert(app, at: 0)
             }
-            self.selectedApp = app
             self.activeTab = .apps
-            await selectApp(app)
+            await selectApp(installedApps.first(where: { $0.url == app.url }) ?? app)
+            if !PathUtils.isSafeToDelete(url: app.url) {
+                notify("這個 App 不在「應用程式」資料夾，只能清除它的資料；App 本身請手動移到垃圾桶", isError: true)
+            }
         } else {
             notify("無法辨識這個應用程式", isError: true)
         }
@@ -383,19 +387,25 @@ public final class AppState: ObservableObject {
         isUninstalling = false
         report(result, success: "已將 \(result.trashedCount) 個項目移至垃圾桶，釋放 \(result.formattedFreedBytes)")
         if result.trashedCount > 0 {
+            invalidateSystemScans()
             await afterTrash(app: app)
         }
+    }
+
+    /// Uninstalling can orphan or remove drivers and leftovers; rescan those pages next time they open.
+    private func invalidateSystemScans() {
+        leftoverGroups = []
+        Task { await scanDrivers() }   // keeps the sidebar badge honest
     }
 
     /// Resets the application: trashes its data (preferences, caches, containers) but keeps the .app bundle.
     public func executeResetApp() async {
         guard let app = selectedApp, !app.isSystemApp, !isUninstalling else { return }
+        // Reset honours the user's ticks and only touches their own data; system-wide items need an uninstall.
         let nonBundleItems = residualItems
-            // Reset only touches the user's own data; system-wide items need explicit selection + uninstall.
-            .filter { $0.category != .appBundle && !$0.isProtected && $0.url.path.hasPrefix(PathUtils.homeDirectory.path + "/") }
-            .map { item -> ResidualItem in var copy = item; copy.isSelected = true; return copy }
+            .filter { $0.isSelected && $0.category != .appBundle && !$0.isProtected && $0.url.path.hasPrefix(PathUtils.homeDirectory.path + "/") }
         guard !nonBundleItems.isEmpty else {
-            notify("\(app.name) 沒有可重置的資料", isError: true)
+            notify("沒有勾選可重置的資料", isError: true)
             return
         }
         isUninstalling = true
@@ -407,6 +417,7 @@ public final class AppState: ObservableObject {
         lastResult = result
         isUninstalling = false
         report(result, success: "已重置 \(app.name)，清除 \(result.formattedFreedBytes)")
+        if result.trashedCount > 0 { invalidateSystemScans() }
         await selectApp(app)
     }
 
@@ -450,7 +461,7 @@ public final class AppState: ObservableObject {
             notify(success)
         } else if result.trashedCount > 0 {
             notify("\(result.trashedCount) 個項目已移除，\(result.failedCount) 個失敗", isError: true)
-        } else if result.failedCount > 0 {
+        } else if result.failedCount > 0 || !result.errors.isEmpty {
             notify(result.errors.first ?? "移除失敗", isError: true)
         } else {
             notify("所選項目已不存在")
@@ -485,7 +496,8 @@ public final class AppState: ObservableObject {
         return list
     }
 
-    public var selectedDriverItems: [DriverItem] { driverItems.filter { $0.isSelected && $0.trashItem != nil } }
+    /// Only what the user can see is acted on; ticks hidden by the filter or search are ignored.
+    public var selectedDriverItems: [DriverItem] { visibleDriverItems.filter { $0.isSelected && $0.trashItem != nil } }
 
     public func scanDrivers() async {
         guard !isLoadingDrivers else { return }
@@ -516,6 +528,7 @@ public final class AppState: ObservableObject {
         lastResult = result
         isUninstalling = false
         report(result, success: "已移除 \(result.trashedCount) 個驅動或背景項目")
+        while isLoadingDrivers { try? await Task.sleep(nanoseconds: 100_000_000) }
         await scanDrivers()
     }
 

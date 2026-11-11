@@ -101,7 +101,7 @@ public struct DriversView: View {
 
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                Checkbox(value: value, isEnabled: !removable.isEmpty) {
+                Checkbox(value: value, isEnabled: !removable.isEmpty, label: vendor) {
                     state.setVendorSelection(vendor, select: value != .on)
                 }
                 Text(vendor)
@@ -132,7 +132,7 @@ public struct DriversView: View {
         HStack(alignment: .top, spacing: 12) {
             Group {
                 if item.trashItem != nil {
-                    Checkbox(value: item.isSelected ? .on : .off) { state.toggleDriver(item.id) }
+                    Checkbox(value: item.isSelected ? .on : .off, label: item.name) { state.toggleDriver(item.id) }
                 } else {
                     Color.clear.frame(width: 16, height: 16)
                 }

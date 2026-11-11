@@ -33,7 +33,7 @@ public struct AppDetailView: View {
                         Task { await state.executeResetApp() }
                     }
                 } message: {
-                    Text("App 本身會保留，它的偏好設定、快取、容器與登入狀態會移至垃圾桶。下次開啟時就像剛安裝。")
+                    Text("App 本身會保留，下方勾選的個人資料（偏好設定、快取、容器、Application Support 等）會移至垃圾桶，系統資料夾的項目不受影響。執行中的 App 會先結束。清空垃圾桶前都能復原。")
                 }
             } else {
                 EmptyStateView(title: "選一個 App", message: "左邊選取後，這裡會列出它在 Mac 上留下的所有檔案。")
@@ -212,7 +212,7 @@ public struct AppDetailView: View {
             .padding(.bottom, 14)
         } header: {
             HStack(spacing: 10) {
-                Checkbox(value: value, isEnabled: !selectable.isEmpty && !locked) {
+                Checkbox(value: value, isEnabled: !selectable.isEmpty && !locked, label: category.displayName) {
                     state.toggleCategorySelection(category: category)
                 }
                 RoundedRectangle(cornerRadius: 2).fill(category.tint).frame(width: 3, height: 14)
@@ -239,7 +239,7 @@ public struct AppDetailView: View {
     private func actionBar(_ app: AppInfo) -> some View {
         HStack(spacing: 16) {
             HStack(spacing: 8) {
-                Checkbox(value: state.quitAppBeforeTrash ? .on : .off) { state.quitAppBeforeTrash.toggle() }
+                Checkbox(value: state.quitAppBeforeTrash ? .on : .off, label: "先結束 App") { state.quitAppBeforeTrash.toggle() }
                 Text("先結束執行中的 App")
                     .font(.system(size: 12))
                     .foregroundStyle(Palette.muted)

@@ -37,7 +37,7 @@ public struct AppListView: View {
                         LazyVStack(spacing: 2) {
                             ForEach(state.filteredApps) { app in
                                 AppRow(app: app,
-                                       isSelected: state.selectedApp?.id == app.id,
+                                       isSelected: state.selectedApp?.url == app.url,
                                        isRunning: running.contains(app.bundleIdentifier))
                                     .id(app.id)
                                     .onTapGesture {
@@ -94,7 +94,7 @@ public struct AppListView: View {
     private func moveSelection(_ delta: Int, proxy: ScrollViewProxy) {
         let apps = state.filteredApps
         guard delta != 0, !apps.isEmpty else { return }
-        let current = apps.firstIndex { $0.id == state.selectedApp?.id } ?? -1
+        let current = apps.firstIndex { $0.url == state.selectedApp?.url } ?? -1
         let next = apps[min(max(current + delta, 0), apps.count - 1)]
         proxy.scrollTo(next.id)
         Task { await state.selectApp(next) }

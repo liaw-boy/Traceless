@@ -144,6 +144,7 @@ struct Checkbox: View {
     enum Value { case on, off, mixed }
     let value: Value
     var isEnabled = true
+    var label = ""
     let action: () -> Void
 
     var body: some View {
@@ -168,6 +169,7 @@ struct Checkbox: View {
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled)
+        .accessibilityLabel(label)
         .accessibilityValue(value == .on ? "已勾選" : value == .mixed ? "部分勾選" : "未勾選")
     }
 }

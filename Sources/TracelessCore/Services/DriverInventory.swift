@@ -118,8 +118,10 @@ public actor DriverInventory {
                 guard !label.lowercased().hasPrefix("com.apple.") else { continue }
                 let program = ResidualScanner.launchdProgram(plist)
                 let team = program.flatMap { CodeSignature.teamID(of: URL(fileURLWithPath: $0)) }
-                let missingProgram = program.map { !fm.fileExists(atPath: $0) } ?? false
-                let ownerName = missingProgram ? nil : owner(label, team)
+                // A bare command ("python3") is resolved via PATH; only an absolute path can be "missing".
+                let missingProgram = program.map { $0.hasPrefix("/") && !fm.fileExists(atPath: $0) } ?? false
+                let hostApp = program.flatMap { p in installedApps.first { p.hasPrefix($0.url.path + "/") }?.name }
+                let ownerName = missingProgram ? nil : (hostApp ?? owner(label, team))
                 items.append(DriverItem(id: plistURL.path, kind: .backgroundService, name: label,
                                         vendor: Self.vendorName(label), detail: program ?? plistURL.path,
                                         ownerApp: ownerName, size: PathUtils.calculateSize(of: plistURL),

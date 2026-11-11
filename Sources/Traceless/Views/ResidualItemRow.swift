@@ -22,7 +22,7 @@ public struct ResidualItemRow: View {
 
     public var body: some View {
         HStack(spacing: 12) {
-            Checkbox(value: item.isSelected ? .on : .off, isEnabled: canToggle, action: onToggle)
+            Checkbox(value: item.isSelected ? .on : .off, isEnabled: canToggle, label: item.name, action: onToggle)
 
             Image(nsImage: NSWorkspace.shared.icon(forFile: item.url.path))
                 .resizable()

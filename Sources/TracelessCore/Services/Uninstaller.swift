@@ -52,24 +52,15 @@ public actor Uninstaller {
             app.terminate()
         }
 
-        // Wait up to 2 seconds for graceful quit
+        // Never force-quit: an app showing "save changes?" would lose the user's work.
         let start = Date()
-        while Date().timeIntervalSince(start) < 2.0 {
-            let stillRunning = NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier)
-            if stillRunning.isEmpty {
+        while Date().timeIntervalSince(start) < 5.0 {
+            if NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).isEmpty {
                 return true
             }
             try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
         }
-
-        // Force terminate if still running
-        let stubborn = NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier)
-        for app in stubborn {
-            app.forceTerminate()
-        }
-
-        try? await Task.sleep(nanoseconds: 100_000_000)
-        return NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).isEmpty
+        return false
     }
 
     /// Moves selected residual items to the macOS Trash using multi-tier fallback.
@@ -79,7 +70,10 @@ public actor Uninstaller {
         quitIfRunning: Bool = true
     ) async -> UninstallResult {
         if quitIfRunning, let bundleId = appBundleIdentifier, !bundleId.isEmpty {
-            _ = await terminateAppIfRunning(bundleIdentifier: bundleId)
+            guard await terminateAppIfRunning(bundleIdentifier: bundleId) else {
+                return UninstallResult(trashedCount: 0, failedCount: 0, freedBytes: 0,
+                                       errors: ["App 仍在執行（可能有未儲存的文件），請先手動結束再試一次"])
+            }
         }
 
         var trashedCount = 0

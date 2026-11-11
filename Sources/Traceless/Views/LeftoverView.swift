@@ -111,7 +111,7 @@ public struct LeftoverView: View {
 
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                Checkbox(value: value) {
+                Checkbox(value: value, label: group.name) {
                     state.toggleLeftoverGroupSelection(groupId: group.id, select: value != .on)
                 }
                 Button {
