@@ -80,10 +80,7 @@ public actor AppScanner {
             // Skip if already parsed
             if seenURLs.contains(fileURL) { continue }
 
-            // Filter out internal Xcode SDKs or non-user simulator apps if desired, but keep genuine apps
-            if rawPath.contains("/Developer/Platforms/") || rawPath.contains("/usr/local/") {
-                continue
-            }
+            if Self.shouldSkipSpotlightPath(rawPath) { continue }
 
             if let appInfo = parseApp(at: fileURL) {
                 seenURLs.insert(fileURL)
@@ -96,6 +93,16 @@ public actor AppScanner {
 
         // Sort by size descending by default
         return results.sorted { $0.size > $1.size }
+    }
+
+    /// Spotlight also returns helper apps embedded in other bundles, apps in the Trash,
+    /// on mounted disk images and inside SDKs — none of which the user can uninstall on their own.
+    static func shouldSkipSpotlightPath(_ path: String) -> Bool {
+        let parent = (path as NSString).deletingLastPathComponent
+        if parent.contains(".app/") || parent.hasSuffix(".app") { return true }
+        let skippedFragments = ["/.Trash/", "/.Trashes/", "/Developer/Platforms/", "/usr/local/", "/Library/Developer/"]
+        if skippedFragments.contains(where: path.contains) { return true }
+        return path.hasPrefix("/Volumes/") || path.hasPrefix("/private/") || path.hasPrefix("/Library/Apple/")
     }
 
     /// Parses an application at a specific file URL.

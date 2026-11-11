@@ -71,9 +71,13 @@ public struct AppInfo: Identifiable, Hashable, Sendable {
         return Date().timeIntervalSince(date) > 90 * 86400
     }
 
+    /// Icons are cached per bundle path: SwiftUI re-evaluates rows often and
+    /// NSWorkspace.icon(forFile:) hits the disk every call.
     public func icon(size: CGFloat = 64) -> NSImage {
+        let key = url.path as NSString
+        if let cached = AppIconCache.shared.object(forKey: key) { return cached }
         let img = NSWorkspace.shared.icon(forFile: url.path)
-        img.size = NSSize(width: size, height: size)
+        AppIconCache.shared.setObject(img, forKey: key)
         return img
     }
 
@@ -84,4 +88,8 @@ public struct AppInfo: Identifiable, Hashable, Sendable {
     public static func == (lhs: AppInfo, rhs: AppInfo) -> Bool {
         lhs.url == rhs.url
     }
+}
+
+private enum AppIconCache {
+    nonisolated(unsafe) static let shared = NSCache<NSString, NSImage>()
 }

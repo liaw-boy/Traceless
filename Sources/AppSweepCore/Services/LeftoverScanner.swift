@@ -88,6 +88,8 @@ public actor LeftoverScanner {
         "com.apple", "Biome", "HomeKit", "CoreData", "Spotlight", "Suggestions"
     ]
 
+    private lazy var lowercasedSystemIdentifiers = Set(knownSystemIdentifiers.map { $0.lowercased() })
+
     private let knownVendorDirectories: Set<String> = [
         "google", "microsoft", "adobe", "jetbrains", "mozilla", "bravesoftware",
         "apple", "steam", "cisco", "atlassian", "zoom", "wacom", "logitech",
@@ -307,10 +309,7 @@ public actor LeftoverScanner {
         let token = sanitizeToken(lower)
 
         // 1. Apple and macOS system identifiers
-        if lower.starts(with: "com.apple.") || knownSystemIdentifiers.contains(candidate) {
-            return false
-        }
-        for sys in knownSystemIdentifiers where sys.lowercased() == lower {
+        if lower.starts(with: "com.apple.") || lowercasedSystemIdentifiers.contains(lower) {
             return false
         }
 
@@ -351,9 +350,14 @@ public actor LeftoverScanner {
         // 6. Check if folder contains an embedded .app bundle (e.g. Discord in ~/Library/Application Support/discord)
         var isDir: ObjCBool = false
         if fileManager.fileExists(atPath: candidateURL.path, isDirectory: &isDir), isDir.boolValue {
-            if let subpaths = try? fileManager.subpathsOfDirectory(atPath: candidateURL.path) {
-                for sub in subpaths.prefix(60) where sub.hasSuffix(".app") {
-                    return false
+            // Lazy, bounded walk: subpathsOfDirectory would enumerate multi-GB folders in full.
+            if let enumerator = fileManager.enumerator(at: candidateURL, includingPropertiesForKeys: nil, options: [.skipsPackageDescendants]) {
+                var visited = 0
+                for case let url as URL in enumerator {
+                    if url.pathExtension == "app" { return false }
+                    if enumerator.level >= 3 { enumerator.skipDescendants() }
+                    visited += 1
+                    if visited >= 200 { break }
                 }
             }
         }

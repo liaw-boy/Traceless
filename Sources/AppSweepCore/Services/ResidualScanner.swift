@@ -9,6 +9,8 @@ public actor ResidualScanner {
     public func scanResiduals(for app: AppInfo) async -> [ResidualItem] {
         var items: [ResidualItem] = []
         var visitedURLs: Set<URL> = []
+        // Apple apps keep user data (Notes, Mail, Photos…) in their containers: never pre-select it.
+        let isAppleApp = app.isSystemApp || app.bundleIdentifier.lowercased().hasPrefix("com.apple.")
 
         // Helper to safely add an item
         func addItem(url: URL, category: ResidualCategory, isSelected: Bool = true, isProtected: Bool = false) {
@@ -24,7 +26,7 @@ public actor ResidualScanner {
                 name: standardized.lastPathComponent,
                 size: size,
                 category: category,
-                isSelected: isSelected && !isProtected,
+                isSelected: isSelected && !isProtected && !isAppleApp,
                 isProtected: isProtected
             )
             items.append(item)
@@ -100,7 +102,7 @@ public actor ResidualScanner {
         let groupContainersDir = userLib.appendingPathComponent("Group Containers")
         if !bundleId.isEmpty {
             scanMatchingFiles(in: groupContainersDir, category: .groupContainers) { filename in
-                filename.hasSuffix(".\(bundleId)") || filename.contains(bundleId)
+                Self.groupContainerMatches(filename, bundleId: bundleId)
             }.forEach { addItem(url: $0, category: .groupContainers) }
         }
 
@@ -133,14 +135,14 @@ public actor ResidualScanner {
         let crashReporterDir = appSupportDir.appendingPathComponent("CrashReporter")
         if !appName.isEmpty {
             scanMatchingFiles(in: crashReporterDir, category: .logs) { filename in
-                filename.hasPrefix(appName)
+                Self.reportFileMatches(filename, appName: appName)
             }.forEach { addItem(url: $0, category: .logs) }
         }
 
         let diagnosticDir = logsDir.appendingPathComponent("DiagnosticReports")
         if !appName.isEmpty {
             scanMatchingFiles(in: diagnosticDir, category: .logs) { filename in
-                filename.hasPrefix(appName)
+                Self.reportFileMatches(filename, appName: appName)
             }.forEach { addItem(url: $0, category: .logs) }
         }
 
@@ -148,8 +150,7 @@ public actor ResidualScanner {
         let userLaunchAgents = userLib.appendingPathComponent("LaunchAgents")
         if !bundleId.isEmpty || !appName.isEmpty {
             scanMatchingFiles(in: userLaunchAgents, category: .launchAgents) { filename in
-                (!bundleId.isEmpty && filename.hasPrefix(bundleId)) ||
-                (!appName.isEmpty && filename.localizedCaseInsensitiveContains(appName))
+                Self.launchAgentMatches(filename, bundleId: bundleId, appName: appName)
             }.forEach { addItem(url: $0, category: .launchAgents) }
         }
 
@@ -160,6 +161,36 @@ public actor ResidualScanner {
             }
             return lhs.size > rhs.size
         }
+    }
+
+    /// Group containers look like "TEAMID.com.vendor.app" or "group.com.vendor.app.shared".
+    /// The bundle id must sit on dot boundaries so "com.foo.app" does not match "com.foo.application".
+    static func groupContainerMatches(_ filename: String, bundleId: String) -> Bool {
+        let name = "." + filename.lowercased() + "."
+        let id = bundleId.lowercased()
+        return !id.isEmpty && name.contains("." + id + ".")
+    }
+
+    /// Crash/diagnostic reports are named "<App>-<date>.ips" or "<App>_<date>…".
+    /// Requiring a separator stops "Code" from matching "CodeRunner-….ips".
+    static func reportFileMatches(_ filename: String, appName: String) -> Bool {
+        guard !appName.isEmpty, filename.hasPrefix(appName) else { return false }
+        guard let next = filename.dropFirst(appName.count).first else { return false }
+        return next == "-" || next == "_" || next == "." || next == " "
+    }
+
+    /// LaunchAgent plists are usually "<bundle id>[.suffix].plist". A name match must equal a whole
+    /// dot-separated component, so an app named "Go" no longer matches "com.google.keystone.agent.plist".
+    static func launchAgentMatches(_ filename: String, bundleId: String, appName: String) -> Bool {
+        let lower = filename.lowercased()
+        let id = bundleId.lowercased()
+        if !id.isEmpty && (lower == id + ".plist" || lower.hasPrefix(id + ".")) {
+            return true
+        }
+        let token = appName.lowercased().filter { $0.isLetter || $0.isNumber }
+        guard token.count >= 3 else { return false }
+        let components = lower.replacingOccurrences(of: ".plist", with: "").split(separator: ".")
+        return components.contains { $0.filter { $0.isLetter || $0.isNumber } == token }
     }
 
     private func scanMatchingFiles(

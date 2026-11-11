@@ -89,58 +89,70 @@ public actor Uninstaller {
 
         let itemsToTrash = items.filter { $0.isSelected && !$0.isProtected }
         let trashDir = PathUtils.homeDirectory.appendingPathComponent(".Trash")
+        var needsPrivilege: [ResidualItem] = []
+
+        func recordFailure(_ item: ResidualItem) {
+            failedCount += 1
+            failedItems.append(item)
+            if item.category == .containers || item.category == .groupContainers {
+                hasPermissionError = true
+                errors.append("無法移除沙盒容器（\(item.name)）：受 macOS 隱私保護，需要「完全取用磁碟」權限。")
+            } else {
+                errors.append("無法移至垃圾桶（\(item.name)）：權限不足或檔案正被使用。")
+            }
+        }
 
         for item in itemsToTrash {
             guard PathUtils.isSafeToDelete(url: item.url) else {
                 failedCount += 1
-                errors.append("路徑受到系統保護，已略過: \(item.path)")
+                errors.append("路徑受到系統保護，已略過：\(item.path)")
                 failedItems.append(item)
                 continue
             }
 
-            guard fileManager.fileExists(atPath: item.url.path) else {
+            // Already gone (e.g. removed together with its parent folder): nothing to do.
+            guard fileManager.fileExists(atPath: item.url.path) || isSymlink(item.url) else {
                 continue
             }
 
-            // Tier 1: Standard macOS trashItem API
-            var moved = false
             do {
-                var resultingURL: NSURL?
-                try fileManager.trashItem(at: item.url, resultingItemURL: &resultingURL)
-                moved = true
-            } catch {
-                // Tier 2: Try direct move into ~/.Trash
-                let targetURL = trashDir.appendingPathComponent(item.url.lastPathComponent)
-                do {
-                    // If target already exists in trash, append timestamp
-                    let uniqueTargetURL: URL
-                    if fileManager.fileExists(atPath: targetURL.path) {
-                        let timestamp = Int(Date().timeIntervalSince1970)
-                        uniqueTargetURL = trashDir.appendingPathComponent("\(item.url.deletingPathExtension().lastPathComponent)_\(timestamp).\(item.url.pathExtension)")
-                    } else {
-                        uniqueTargetURL = targetURL
-                    }
-
-                    try fileManager.moveItem(at: item.url, to: uniqueTargetURL)
-                    moved = true
-                } catch {
-                    // Tier 3: Privileged Administrator Escalation
-                    moved = performPrivilegedMoveToTrash(source: item.url, trashDir: trashDir)
-                }
-            }
-
-            if moved {
+                // Tier 1: official Trash API (supports "Put Back" in Finder).
+                try fileManager.trashItem(at: item.url, resultingItemURL: nil)
                 trashedCount += 1
                 freedBytes += item.size
-            } else {
-                failedCount += 1
-                failedItems.append(item)
+            } catch {
+                do {
+                    // Tier 2: plain move into ~/.Trash with a non-clobbering name.
+                    try fileManager.moveItem(at: item.url, to: Self.uniqueTrashURL(for: item.url, in: trashDir))
+                    trashedCount += 1
+                    freedBytes += item.size
+                } catch {
+                    // Files inside the home folder are user-owned; root cannot bypass TCC there,
+                    // so only system locations (/Applications, /Library) get the admin fallback.
+                    if item.url.path.hasPrefix(PathUtils.homeDirectory.path + "/") {
+                        recordFailure(item)
+                    } else {
+                        needsPrivilege.append(item)
+                    }
+                }
+            }
+        }
 
-                if item.url.path.contains("/Library/Containers") || item.category == .containers {
-                    hasPermissionError = true
-                    errors.append("無法清理沙盒容器 (\(item.name))：受 macOS TCC 機制保護，需要「完全取用磁碟」權限。")
+        // Tier 3: one administrator prompt for every remaining item (root-owned files).
+        if !needsPrivilege.isEmpty {
+            var reserved = Set<String>()
+            let pairs = needsPrivilege.map { item -> (URL, URL) in
+                let dst = Self.uniqueTrashURL(for: item.url, in: trashDir, reserved: reserved)
+                reserved.insert(dst.path)
+                return (item.url, dst)
+            }
+            runPrivileged(Self.privilegedMoveScript(pairs))
+            for item in needsPrivilege {
+                if !fileManager.fileExists(atPath: item.url.path) && !isSymlink(item.url) {
+                    trashedCount += 1
+                    freedBytes += item.size
                 } else {
-                    errors.append("無法移至垃圾桶 (\(item.name))：權限不足或檔案被系統鎖定。")
+                    recordFailure(item)
                 }
             }
         }
@@ -155,17 +167,56 @@ public actor Uninstaller {
         )
     }
 
-    private func performPrivilegedMoveToTrash(source: URL, trashDir: URL) -> Bool {
-        let dest = trashDir.appendingPathComponent(source.lastPathComponent).path
-        let escapedSource = source.path.replacingOccurrences(of: "\"", with: "\\\"")
-        let escapedDest = dest.replacingOccurrences(of: "\"", with: "\\\"")
-        let script = "do shell script \"/bin/mv -f \\\"\(escapedSource)\\\" \\\"\(escapedDest)\\\"\" with administrator privileges"
+    private func isSymlink(_ url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true
+    }
 
-        var errorDict: NSDictionary?
-        if let appleScript = NSAppleScript(source: script) {
-            let _ = appleScript.executeAndReturnError(&errorDict)
-            return errorDict == nil
+    /// Returns a URL in `trashDir` that does not collide with an existing item.
+    static func uniqueTrashURL(
+        for source: URL,
+        in trashDir: URL,
+        reserved: Set<String> = [],
+        fileManager: FileManager = .default
+    ) -> URL {
+        func taken(_ url: URL) -> Bool { reserved.contains(url.path) || fileManager.fileExists(atPath: url.path) }
+        let name = source.lastPathComponent
+        var candidate = trashDir.appendingPathComponent(name)
+        guard taken(candidate) else { return candidate }
+        let ext = source.pathExtension
+        let base = ext.isEmpty ? name : String(name.dropLast(ext.count + 1))
+        var n = 2
+        repeat {
+            let numbered = ext.isEmpty ? "\(base) \(n)" : "\(base) \(n).\(ext)"
+            candidate = trashDir.appendingPathComponent(numbered)
+            n += 1
+        } while taken(candidate)
+        return candidate
+    }
+
+    /// Builds an AppleScript that moves every pair with root privileges.
+    /// Paths are passed through `quoted form of` so the shell never interprets them.
+    static func privilegedMoveScript(_ pairs: [(URL, URL)]) -> String {
+        func literal(_ s: String) -> String {
+            "\"" + s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\""
         }
-        return false
+        let commands = pairs.map { src, dst in
+            "\"/bin/mv -n -- \" & quoted form of \(literal(src.path)) & \" \" & quoted form of \(literal(dst.path))"
+        }
+        return "do shell script (" + commands.joined(separator: " & \" ; \" & ") + ") with administrator privileges"
+    }
+
+    /// Runs the script through osascript (no shell; NSAppleScript is not safe off the main thread).
+    private func runPrivileged(_ source: String) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", source]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            return
+        }
     }
 }
