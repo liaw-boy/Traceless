@@ -10,6 +10,10 @@ let package = Package(
         .executable(name: "Traceless", targets: ["Traceless"]),
         .library(name: "TracelessCore", targets: ["TracelessCore"])
     ],
+    dependencies: [
+        // Auto-update; pinned so a release never picks up an unreviewed version.
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0")
+    ],
     targets: [
         .target(
             name: "TracelessCore",
@@ -17,7 +21,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "Traceless",
-            dependencies: ["TracelessCore"],
+            dependencies: ["TracelessCore", .product(name: "Sparkle", package: "Sparkle")],
             path: "Sources/Traceless"
         ),
         .testTarget(

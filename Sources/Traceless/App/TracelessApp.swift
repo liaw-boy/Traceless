@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct TracelessApp: App {
     @StateObject private var state = AppState()
+    private let updater = AppUpdater()
     @Environment(\.openWindow) private var openWindow
     @AppStorage(AppearanceMode.storageKey) private var appearance: AppearanceMode = .system
 
@@ -18,6 +19,8 @@ struct TracelessApp: App {
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("關於 Traceless") { openWindow(id: "about") }
+                Button("檢查更新…") { updater.checkForUpdates() }
+                    .disabled(!updater.isAvailable)
             }
             SidebarCommands()
             CommandGroup(after: .sidebar) {

@@ -34,7 +34,7 @@ swift test           # 單元測試
 
 ## 安裝與授權
 
-1. 打開 `Traceless.dmg`，把 Traceless 拖進「應用程式」。
+1. 到 [Releases](https://github.com/liaw-boy/Traceless/releases/latest) 下載 `Traceless.dmg`，打開後把 Traceless 拖進「應用程式」。之後的新版本可以在 App 內「Traceless › 檢查更新…」直接更新。
 2. 第一次開啟：這是 ad-hoc 簽章、未經 Apple 公證，macOS 會擋下並說「無法驗證開發者」。先按「完成」，再到「系統設定 › 隱私權與安全性」最下方按「仍要打開」（macOS 15 起右鍵 › 打開已無法略過）。
    也可以在終端機移除下載隔離標記，只對這一個 App 生效：
    ```bash
@@ -47,7 +47,7 @@ swift test           # 單元測試
 - 只會「移到垃圾桶」，不會永久刪除；每一個路徑都先經過 `isSafeToDelete` 白名單檢查（見上方安全設計與 `Tests/`）。
 - 管理者密碼只在要移動 `/Applications`、`/Library` 內 root 擁有的檔案時才會詢問，由 macOS 原生對話框處理，Traceless 拿不到密碼。
 
-注意：ad-hoc 簽章每次重新建置都會改變，macOS 會把新版當成不同的 App，**重新建置後需要再授權一次**。若要避免，可用固定的簽章身分（Apple Developer ID，或鑰匙圈中自建的程式碼簽署憑證）執行 `SIGN_IDENTITY="憑證名稱" ./bundle.sh`。
+注意：ad-hoc 簽章每次重新建置（包含自動更新後）都會改變，macOS 會把新版當成不同的 App，**重新建置後需要再授權一次**。若要避免，可用固定的簽章身分（Apple Developer ID，或鑰匙圈中自建的程式碼簽署憑證）執行 `SIGN_IDENTITY="憑證名稱" ./bundle.sh`。
 
 ## 授權條款
 

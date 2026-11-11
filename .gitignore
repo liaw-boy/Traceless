@@ -10,3 +10,4 @@ Resources/AppIcon.iconset/
 Resources/AppIcon.icns
 .env
 *.p12
+dist/
