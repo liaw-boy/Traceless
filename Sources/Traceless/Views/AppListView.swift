@@ -120,7 +120,7 @@ private struct AppRow: View {
                         .lineLimit(1)
                     if isRunning {
                         Circle()
-                            .fill(isSelected ? Color.white : Palette.pine)
+                            .fill(isSelected ? Palette.onAccent : Palette.accent)
                             .frame(width: 6, height: 6)
                             .help("執行中")
                             .accessibilityLabel("執行中")
@@ -137,9 +137,9 @@ private struct AppRow: View {
             Text(app.formattedSize)
                 .font(.display(12, .medium))
                 .monospacedDigit()
-                .foregroundStyle(isSelected ? Color.white.opacity(0.9) : Palette.muted)
+                .foregroundStyle(isSelected ? Palette.onAccent.opacity(0.85) : Palette.muted)
         }
-        .foregroundStyle(isSelected ? Color.white : Palette.ink)
+        .foregroundStyle(isSelected ? Palette.onAccent : Palette.ink)
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
         .background(background, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
@@ -150,12 +150,12 @@ private struct AppRow: View {
     }
 
     private var background: Color {
-        if isSelected { return Palette.pineFill }
-        return isHovered ? Palette.pineWash.opacity(0.6) : .clear
+        if isSelected { return Palette.accentFill }
+        return isHovered ? Palette.accentWash.opacity(0.6) : .clear
     }
 
     private var subtitleColor: Color {
-        if isSelected { return Color.white.opacity(0.8) }
+        if isSelected { return Palette.onAccent.opacity(0.75) }
         return app.isUnusedOver3Months && !app.isSystemApp ? Palette.ochre : Palette.muted
     }
 }

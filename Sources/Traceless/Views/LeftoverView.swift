@@ -188,7 +188,7 @@ public struct LeftoverView: View {
                     Text("移至垃圾桶")
                 }
             }
-            .buttonStyle(SolidButtonStyle(color: Palette.brickFill))
+            .buttonStyle(SolidButtonStyle(color: Palette.brickFill, textColor: .white))
             .disabled(state.totalSelectedLeftoverCount == 0 || state.isUninstalling)
         }
         .padding(.horizontal, 24)

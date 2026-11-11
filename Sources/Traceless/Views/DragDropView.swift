@@ -10,7 +10,7 @@ public struct DragDropView: View {
     public var body: some View {
         VStack(spacing: 22) {
             // The mark dissolves at rest and becomes a whole tile while an app is held over it.
-            TraceMark(size: 96, color: isTargeted ? Palette.pine : Palette.muted.opacity(0.5), dissolving: !isTargeted)
+            TraceMark(size: 96, color: isTargeted ? Palette.accent : Palette.muted.opacity(0.5), dissolving: !isTargeted)
 
             VStack(spacing: 6) {
                 Text(isTargeted ? "放開以分析" : "把 App 拖到這裡")
@@ -30,9 +30,9 @@ public struct DragDropView: View {
         .frame(maxWidth: 560, maxHeight: 400)
         .background {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(isTargeted ? Palette.pineWash : Palette.surface)
+                .fill(isTargeted ? Palette.accentWash : Palette.surface)
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(isTargeted ? Palette.pine : Palette.hairline,
+                .strokeBorder(isTargeted ? Palette.accent : Palette.hairline,
                               style: StrokeStyle(lineWidth: 1.5, dash: isTargeted ? [] : [7, 5]))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

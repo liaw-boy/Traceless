@@ -6,21 +6,22 @@ import TracelessCore
 
 /// Traceless palette. Every colour adapts to light/dark through a dynamic NSColor.
 enum Palette {
-    static let pine = dynamic(light: 0x1C8066, dark: 0x3FA585)        // brand, selection, primary action
-    /// Fills that carry white text: darker in dark mode so small labels keep ≥4.5:1 contrast.
-    static let pineFill = dynamic(light: 0x1C8066, dark: 0x1F6E57)
-    static let brickFill = dynamic(light: 0xB4442F, dark: 0xA9402C)
-    static let pineInk = dynamic(light: 0x145C4A, dark: 0x8FD3BC)     // text on pine-tinted surfaces
-    static let pineWash = dynamic(light: 0xDCEBE5, dark: 0x203A31)    // selected row / chip background
-    static let canvas = dynamic(light: 0xEEF3F1, dark: 0x141C19)      // window background
-    static let sidebar = dynamic(light: 0xE4ECE8, dark: 0x101714)
-    static let surface = dynamic(light: 0xFFFFFF, dark: 0x1C2723)     // content panels
-    static let slot = dynamic(light: 0xDCE5E1, dark: 0x0E1513)        // recessed track
-    static let ink = dynamic(light: 0x17221E, dark: 0xE4ECE8)
-    static let muted = dynamic(light: 0x5F6F69, dark: 0x93A49D)
-    static let hairline = dynamic(light: 0xD3DDD9, dark: 0x2A3833)
-    static let brick = dynamic(light: 0xB4442F, dark: 0xD4644E)       // destructive
-    static let ochre = dynamic(light: 0xB7791F, dark: 0xD9A04A)       // warnings
+    // Graphite monochrome: the accent is near-black in light mode and near-white in dark mode,
+    // so anything drawn on it uses `onAccent`, which flips the other way.
+    static let accent = dynamic(light: 0x1D1D1F, dark: 0xEDEDEF)        // selection, checkbox, primary action
+    static let accentFill = accent
+    static let onAccent = dynamic(light: 0xFFFFFF, dark: 0x1D1D1F)      // text/marks on accent fills
+    static let accentWash = dynamic(light: 0xE8E8EA, dark: 0x2A2A2E)    // hover
+    static let canvas = dynamic(light: 0xF5F5F7, dark: 0x161618)        // window background
+    static let sidebar = dynamic(light: 0xEDEDEF, dark: 0x111113)
+    static let surface = dynamic(light: 0xFFFFFF, dark: 0x1E1E21)       // content panels
+    static let slot = dynamic(light: 0xE6E6E9, dark: 0x0D0D0F)          // recessed track
+    static let ink = dynamic(light: 0x1D1D1F, dark: 0xEDEDEF)
+    static let muted = dynamic(light: 0x6E6E73, dark: 0x98989F)
+    static let hairline = dynamic(light: 0xDADADD, dark: 0x2C2C30)
+    static let brick = dynamic(light: 0xC23B2B, dark: 0xE5604D)         // destructive (the only colour)
+    static let brickFill = dynamic(light: 0xC23B2B, dark: 0xB8372A)
+    static let ochre = dynamic(light: 0xB7791F, dark: 0xD9A04A)         // warnings
 
     static func dynamic(light: UInt32, dark: UInt32) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in
@@ -42,7 +43,7 @@ extension ResidualCategory {
     /// Muted, related hues so the storage slot reads as one family rather than a rainbow.
     var tint: Color {
         switch self {
-        case .appBundle: return Palette.pine
+        case .appBundle: return Palette.accent
         case .applicationSupport: return Palette.dynamic(light: 0x4F7A9A, dark: 0x7AA3C2)
         case .preferences: return Palette.dynamic(light: 0xB7791F, dark: 0xD9A04A)
         case .caches: return Palette.dynamic(light: 0x6E9C8C, dark: 0x8DBBAA)
@@ -81,7 +82,7 @@ enum AppVersion {
 /// Same geometry as scripts/generate_icon.swift. `dissolving: false` shows the whole tile.
 struct TraceMark: View {
     var size: CGFloat = 64
-    var color: Color = Palette.pine
+    var color: Color = Palette.accent
     var dissolving = true
 
     private static let rows = 4
@@ -142,14 +143,14 @@ struct Checkbox: View {
         Button(action: action) {
             ZStack {
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .fill(value == .off ? Color.clear : Palette.pine)
+                    .fill(value == .off ? Color.clear : Palette.accent)
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .strokeBorder(value == .off ? Palette.muted.opacity(0.7) : Palette.pine, lineWidth: 1.2)
+                    .strokeBorder(value == .off ? Palette.muted.opacity(0.7) : Palette.accent, lineWidth: 1.2)
                 switch value {
                 case .on:
-                    Image(systemName: "checkmark").font(.system(size: 9, weight: .heavy)).foregroundStyle(.white)
+                    Image(systemName: "checkmark").font(.system(size: 9, weight: .heavy)).foregroundStyle(Palette.onAccent)
                 case .mixed:
-                    Capsule().fill(.white).frame(width: 8, height: 2)
+                    Capsule().fill(Palette.onAccent).frame(width: 8, height: 2)
                 case .off:
                     EmptyView()
                 }
@@ -164,7 +165,7 @@ struct Checkbox: View {
     }
 }
 
-/// Capsule filter chips; selection is a solid pine pill.
+/// Capsule filter chips; selection is a solid accent pill.
 struct FilterChips<Option: Hashable & Identifiable & RawRepresentable>: View where Option.RawValue == String {
     let options: [Option]
     @Binding var selection: Option
@@ -178,10 +179,10 @@ struct FilterChips<Option: Hashable & Identifiable & RawRepresentable>: View whe
                 } label: {
                     Text(option.rawValue)
                         .font(.system(size: 12, weight: isOn ? .semibold : .regular))
-                        .foregroundStyle(isOn ? Color.white : Palette.muted)
+                        .foregroundStyle(isOn ? Palette.onAccent : Palette.muted)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
-                        .background(isOn ? Palette.pineFill : Color.clear, in: Capsule())
+                        .background(isOn ? Palette.accentFill : Color.clear, in: Capsule())
                         .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -193,15 +194,16 @@ struct FilterChips<Option: Hashable & Identifiable & RawRepresentable>: View whe
     }
 }
 
-/// Filled action button: pine for primary, brick for destructive.
+/// Filled action button: graphite accent for primary, brick for destructive.
 struct SolidButtonStyle: ButtonStyle {
-    var color: Color = Palette.pineFill
+    var color: Color = Palette.accentFill
+    var textColor: Color = Palette.onAccent
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(.white)
+            .foregroundStyle(textColor)
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
             .background(color.opacity(isEnabled ? (configuration.isPressed ? 0.8 : 1) : 0.35),

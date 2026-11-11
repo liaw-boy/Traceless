@@ -72,7 +72,7 @@ public struct AppDetailView: View {
                             StatusBadge(text: "系統", icon: "lock.fill")
                         }
                         if app.isRunning {
-                            StatusBadge(text: "執行中", color: Palette.pine)
+                            StatusBadge(text: "執行中", color: Palette.accent)
                         }
                     }
                     Text(app.bundleIdentifier.isEmpty ? PathUtils.abbreviatingWithTilde(url: app.url) : app.bundleIdentifier)
@@ -265,7 +265,7 @@ public struct AppDetailView: View {
                     Text("移至垃圾桶")
                 }
             }
-            .buttonStyle(SolidButtonStyle(color: Palette.brickFill))
+            .buttonStyle(SolidButtonStyle(color: Palette.brickFill, textColor: .white))
             .keyboardShortcut(.delete, modifiers: .command)
             .disabled(app.isSystemApp || state.selectedResiduals.isEmpty || state.isUninstalling || state.isLoadingResiduals)
             .help(app.isSystemApp ? "系統 App 無法移除" : "將勾選的項目移至垃圾桶（⌘⌫）")

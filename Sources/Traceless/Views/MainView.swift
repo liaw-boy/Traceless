@@ -17,7 +17,7 @@ public struct MainView: View {
             detail
                 .overlay(alignment: .bottom) { toast }
         }
-        .tint(Palette.pine)
+        .tint(Palette.accent)
         // Toolbar shares the canvas colour and drops the duplicate title; each page has its own heading.
         .toolbarBackground(Palette.canvas, for: .windowToolbar)
         .toolbarBackground(.visible, for: .windowToolbar)
@@ -173,13 +173,13 @@ public struct MainView: View {
                     Text("\(count)")
                         .font(.display(11, .medium))
                         .monospacedDigit()
-                        .foregroundStyle(isOn ? Color.white.opacity(0.85) : Palette.muted)
+                        .foregroundStyle(isOn ? Palette.onAccent.opacity(0.8) : Palette.muted)
                 }
             }
-            .foregroundStyle(isOn ? Color.white : Palette.ink)
+            .foregroundStyle(isOn ? Palette.onAccent : Palette.ink)
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
-            .background(isOn ? Palette.pineFill : Color.clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background(isOn ? Palette.accentFill : Color.clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -201,7 +201,7 @@ public struct MainView: View {
         if state.showToast {
             HStack(spacing: 10) {
                 Image(systemName: state.toastIsError ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
-                    .foregroundStyle(state.toastIsError ? Palette.ochre : Color.white)
+                    .foregroundStyle(state.toastIsError ? Palette.ochre : Palette.onAccent)
                 Text(state.toastMessage)
                     .lineLimit(2)
                 if !state.toastIsError {
@@ -212,10 +212,10 @@ public struct MainView: View {
                 }
             }
             .font(.system(size: 12))
-            .foregroundStyle(state.toastIsError ? Palette.ink : Color.white)
+            .foregroundStyle(state.toastIsError ? Palette.ink : Palette.onAccent)
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
-            .background(state.toastIsError ? Palette.surface : Palette.pineFill, in: Capsule())
+            .background(state.toastIsError ? Palette.surface : Palette.accentFill, in: Capsule())
             .overlay(Capsule().strokeBorder(state.toastIsError ? Palette.hairline : .clear))
             .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
             .padding(.bottom, 76)

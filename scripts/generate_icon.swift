@@ -14,7 +14,7 @@ let fm = FileManager.default
 try? fm.removeItem(atPath: iconsetPath)
 try fm.createDirectory(atPath: iconsetPath, withIntermediateDirectories: true)
 
-let background = darkPreview ? CGColor(gray: 0.12, alpha: 1) : CGColor(red: 0.11, green: 0.50, blue: 0.40, alpha: 1)  // #1C8066
+let background = darkPreview ? CGColor(gray: 0.06, alpha: 1) : CGColor(red: 0.137, green: 0.137, blue: 0.149, alpha: 1)  // graphite #232326
 let ink = CGColor(red: 1, green: 1, blue: 1, alpha: 1)
 
 /// Unit-square geometry (origin top-left, y down), mirrored by TraceMark.
