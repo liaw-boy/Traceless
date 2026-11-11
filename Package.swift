@@ -2,28 +2,28 @@
 import PackageDescription
 
 let package = Package(
-    name: "Uproot",
+    name: "Traceless",
     platforms: [
         .macOS(.v14)
     ],
     products: [
-        .executable(name: "Uproot", targets: ["Uproot"]),
-        .library(name: "UprootCore", targets: ["UprootCore"])
+        .executable(name: "Traceless", targets: ["Traceless"]),
+        .library(name: "TracelessCore", targets: ["TracelessCore"])
     ],
     targets: [
         .target(
-            name: "UprootCore",
-            path: "Sources/UprootCore"
+            name: "TracelessCore",
+            path: "Sources/TracelessCore"
         ),
         .executableTarget(
-            name: "Uproot",
-            dependencies: ["UprootCore"],
-            path: "Sources/Uproot"
+            name: "Traceless",
+            dependencies: ["TracelessCore"],
+            path: "Sources/Traceless"
         ),
         .testTarget(
-            name: "UprootCoreTests",
-            dependencies: ["UprootCore"],
-            path: "Tests/UprootCoreTests"
+            name: "TracelessCoreTests",
+            dependencies: ["TracelessCore"],
+            path: "Tests/TracelessCoreTests"
         )
     ]
 )

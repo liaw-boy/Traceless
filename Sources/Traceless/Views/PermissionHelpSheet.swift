@@ -1,6 +1,6 @@
 import SwiftUI
 import AppKit
-import UprootCore
+import TracelessCore
 
 public struct PermissionHelpSheet: View {
     @ObservedObject var state: AppState
@@ -22,10 +22,10 @@ public struct PermissionHelpSheet: View {
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("1. 先把 Uproot 拖進「應用程式」資料夾（權限綁定在 App 所在位置）。")
-                Text("2. 按「開啟系統設定」，在「隱私權與安全性 › 完全取用磁碟」按 + 加入 Uproot，並打開開關。")
-                Text("3. 回到 Uproot，會自動重新檢查，不需要重新啟動。")
-                Text("Uproot 只會把檔案移到垃圾桶，不會讀取或上傳你的資料；整個程式不連網。")
+                Text("1. 先把 Traceless 拖進「應用程式」資料夾（權限綁定在 App 所在位置）。")
+                Text("2. 按「開啟系統設定」，在「隱私權與安全性 › 完全取用磁碟」按 + 加入 Traceless，並打開開關。")
+                Text("3. 回到 Traceless，會自動重新檢查，不需要重新啟動。")
+                Text("Traceless 只會把檔案移到垃圾桶，不會讀取或上傳你的資料；整個程式不連網。")
                     .foregroundStyle(.secondary)
                     .padding(.top, 2)
             }

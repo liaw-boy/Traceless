@@ -1,6 +1,6 @@
 import SwiftUI
 import AppKit
-import UprootCore
+import TracelessCore
 
 /// One file or folder that can be moved to the Trash.
 public struct ResidualItemRow: View {

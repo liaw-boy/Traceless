@@ -1,5 +1,5 @@
 import SwiftUI
-import UprootCore
+import TracelessCore
 
 /// Flat, system-driven styling: colors follow light/dark mode and the user's accent color.
 extension ResidualCategory {

@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 import Combine
-import UprootCore
+import TracelessCore
 
 public enum NavigationTab: String, CaseIterable, Identifiable {
     case apps = "應用程式"

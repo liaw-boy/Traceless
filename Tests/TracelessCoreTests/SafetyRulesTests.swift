@@ -1,11 +1,11 @@
 import XCTest
-@testable import UprootCore
+@testable import TracelessCore
 
 final class SafetyRulesTests: XCTestCase {
     private var tempDir: URL!
 
     override func setUpWithError() throws {
-        tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("UprootTests-\(UUID().uuidString)")
+        tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("TracelessTests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
     }
 
@@ -19,7 +19,7 @@ final class SafetyRulesTests: XCTestCase {
     /// literally and never interpreted by the shell.
     func testPrivilegedScriptDoesNotInterpretHostileNames() throws {
         // File names cannot contain "/", so the payload reaches the canary through $TMPDIR.
-        let canaryName = "uproot-canary-\(UUID().uuidString)"
+        let canaryName = "traceless-canary-\(UUID().uuidString)"
         let canary = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(canaryName)
         defer { try? FileManager.default.removeItem(at: canary) }
         let names = [
@@ -191,7 +191,7 @@ final class AuditFixTests: XCTestCase {
         // /Library and / are root-owned and not world-writable on every Mac.
         XCTAssertTrue(Uninstaller.hasRootOnlyAncestors(URL(fileURLWithPath: "/Library/LaunchDaemons/x.plist")))
         // A user-owned temp folder could be swapped for a symlink, so root must not act inside it.
-        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("UprootAnc-\(UUID().uuidString)")
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("TracelessAnc-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tmp) }
         XCTAssertFalse(Uninstaller.hasRootOnlyAncestors(tmp.appendingPathComponent("x")))

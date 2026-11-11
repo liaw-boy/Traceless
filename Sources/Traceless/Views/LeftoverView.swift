@@ -1,6 +1,6 @@
 import SwiftUI
 import AppKit
-import UprootCore
+import TracelessCore
 
 public struct LeftoverView: View {
     @ObservedObject var state: AppState

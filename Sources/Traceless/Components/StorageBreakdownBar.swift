@@ -1,5 +1,5 @@
 import SwiftUI
-import UprootCore
+import TracelessCore
 
 /// Proportional bar of where an app's disk usage lives, with a compact legend.
 public struct StorageBreakdownBar: View {

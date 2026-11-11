@@ -2,19 +2,19 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Uproot (formerly AppSweep) is a native macOS (14+) app uninstaller written in SwiftUI, built as a plain Swift Package (no Xcode project). UI strings are Traditional Chinese.
+Traceless (formerly AppSweep, briefly Uproot) is a native macOS (14+) app uninstaller written in SwiftUI, built as a plain Swift Package (no Xcode project). UI strings are Traditional Chinese.
 
 ## Commands
 
 ```bash
 swift build                                   # debug build
-swift run Uproot                              # launch the app from source
-swift test                                    # all tests (UprootCoreTests)
-swift test --filter UprootCoreTests.SafetyRulesTests/testLaunchAgentMatching   # single test
-./bundle.sh                                   # release build → Uproot.app + Uproot.dmg (ad-hoc signed)
+swift run Traceless                              # launch the app from source
+swift test                                    # all tests (TracelessCoreTests)
+swift test --filter TracelessCoreTests.SafetyRulesTests/testLaunchAgentMatching   # single test
+./bundle.sh                                   # release build → Traceless.app + Traceless.dmg (ad-hoc signed)
 ```
 
-- `bundle.sh` regenerates the icon (`scripts/generate_icon.swift` → `Resources/AppIcon.iconset` → `.icns`), writes `Info.plist` inline with the version from `VERSION` and build number = git commit count, codesigns ad-hoc, and packages the DMG. `Uproot.app`, `*.dmg`, `Resources/AppIcon.*` and `.build/` are git-ignored build outputs. Record user-visible changes in `CHANGELOG.md` and bump `VERSION` when releasing.
+- `bundle.sh` regenerates the icon (`scripts/generate_icon.swift` → `Resources/AppIcon.iconset` → `.icns`), writes `Info.plist` inline with the version from `VERSION` and build number = git commit count, codesigns ad-hoc, and packages the DMG. `Traceless.app`, `*.dmg`, `Resources/AppIcon.*` and `.build/` are git-ignored build outputs. Record user-visible changes in `CHANGELOG.md` and bump `VERSION` when releasing.
 - Some tests (`testAppScanner`, `testLeftoverScannerDoesNotFlagInstalledApps`) read the real `/Applications` and `~/Library`, so results depend on the machine.
 - Icon is drawn in code by `scripts/generate_icon.swift` (flat colours, no gradients).
 
@@ -22,7 +22,7 @@ swift test --filter UprootCoreTests.SafetyRulesTests/testLaunchAgentMatching   #
 
 Two targets (see `Package.swift`):
 
-- **`UprootCore`** (library, testable, no SwiftUI): models + services.
+- **`TracelessCore`** (library, testable, no SwiftUI): models + services.
   - `AppScanner` — enumerates `/Applications`, `~/Applications`, `/System/Applications`, CoreServices apps; parses bundles, reads Spotlight metadata (last used date), detects arch by Mach-O header.
   - `ResidualScanner` — given one `AppInfo`, finds its related files in `~/Library` (caches, containers, prefs, etc.) as `ResidualItem`s tagged with `ResidualCategory`; system-app items are marked `isProtected`.
   - `LeftoverScanner` — finds orphaned `~/Library` data whose owner app is no longer installed, grouped into `LeftoverAppGroup` (matching by bundle ID / reverse-DNS tokens). Also owns `LeftoverSortOption`/`LeftoverFilterMode`.
@@ -30,6 +30,6 @@ Two targets (see `Package.swift`):
   - `PathUtils.isSafeToDelete` — the single safety gate every deletion passes through (blocks root/system dirs and the top-level `~/Library/*` folders themselves). Any new deletion path must go through it; `PathSafetyTests` and `testPathUtilsSafety` cover it.
   - Matching rules are `static` pure functions (`launchAgentMatches`, `groupContainerMatches`, `launchdJobBelongs`, `AppScanner.shouldSkipSpotlightPath`) so they can be unit-tested without touching the real `~/Library`.
   - All services are `actor`s; models are `Sendable`.
-- **`Uproot`** (executable, SwiftUI): `App/AppState.swift` is the single `@MainActor ObservableObject` holding all UI state (tabs, filters, sort, sheets, toasts) and owning the service actors; views in `Views/` read it. `NavigationTab`, `AppFilterMode`, `AppSortOption` are defined in `AppState.swift`. UI uses native SwiftUI controls (List, segmented Picker, checkbox Toggle, `.searchable`, `.confirmationDialog`) and system colors — no custom theme, no gradients. `Components/Theme.swift` only maps `ResidualCategory` to a tint and reads the bundle version.
+- **`Traceless`** (executable, SwiftUI): `App/AppState.swift` is the single `@MainActor ObservableObject` holding all UI state (tabs, filters, sort, sheets, toasts) and owning the service actors; views in `Views/` read it. `NavigationTab`, `AppFilterMode`, `AppSortOption` are defined in `AppState.swift`. UI uses native SwiftUI controls (List, segmented Picker, checkbox Toggle, `.searchable`, `.confirmationDialog`) and system colors — no custom theme, no gradients. `Components/Theme.swift` only maps `ResidualCategory` to a tint and reads the bundle version.
 
-Business logic belongs in `UprootCore` so it stays testable; the UI target has no tests.
+Business logic belongs in `TracelessCore` so it stays testable; the UI target has no tests.

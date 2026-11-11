@@ -1,11 +1,11 @@
 import SwiftUI
 
 @main
-struct UprootApp: App {
+struct TracelessApp: App {
     @StateObject private var state = AppState()
 
     var body: some Scene {
-        WindowGroup("Uproot") {
+        WindowGroup("Traceless") {
             MainView(state: state)
                 .frame(minWidth: 980, minHeight: 620)
         }

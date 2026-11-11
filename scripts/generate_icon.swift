@@ -2,8 +2,8 @@ import AppKit
 import CoreGraphics
 import Foundation
 
-// Uproot icon: an app tile lifted up and out of the U-shaped slot it sat in — the app leaves cleanly,
-// and the U doubles as the initial.
+// Traceless icon: an app tile lifted up and out of the slot it sat in — the app leaves cleanly,
+// nothing is left behind.
 // Geometric, single-colour foreground so it also reads when macOS swaps the background
 // (dark / tinted icon modes on macOS 26). No gradients, no glow.
 // Usage: swift scripts/generate_icon.swift <output.iconset> [--dark]
@@ -46,7 +46,7 @@ func renderIcon(pixelSize: Int) -> Data? {
     let slotRect = CGRect(x: body.midX - tile / 2, y: body.midY - groupHeight / 2, width: tile, height: tile)
     let tileRect = slotRect.offsetBy(dx: 0, dy: lift)
 
-    // "U": the lower part of the slot the app used to occupy (and Uproot's initial).
+    // The lower part of the slot the app used to occupy.
     let stroke = w * (pixelSize <= 64 ? 0.05 : 0.032)
     let slot = slotRect.insetBy(dx: stroke / 2, dy: stroke / 2)
     let topY = tileRect.minY + tile * 0.12              // rises behind the tile, which sits in front
